@@ -139,7 +139,7 @@ class Segment(Packet):
         return self
 
     def decode(self):
-        self.get() # identity: 0x88
+        self.get()  # identity: 0x88
         self.flags = self.get()
         self.length = self.get_short()
         self.packet_id = self.get_short()
@@ -165,7 +165,8 @@ class Segment(Packet):
 
     def __str__(self):
         tmp = Packet.__str__(self)
-        tmp += f"\nidentity: 0x{self.identity:x}, " \
+        tmp += \
+            f"\nidentity: 0x{self.identity:x}, " \
             f"flags: {self.flags}, " \
             f"length: {self.length}, " \
             f"packet_id: {self.packet_id}, " \
