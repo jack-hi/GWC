@@ -5,6 +5,7 @@ import asyncore
 from segment import Segment
 import socket
 import threading
+import struct
 
 SERVER_ADDRESS = ("", 7896)
 
@@ -30,8 +31,25 @@ class TcpHandler(asyncore.dispatcher):
         self.recv_buf = bytearray()
         self.send_buf = bytearray()
 
+    def _get_packet(self):
+        """
+        Get a segment packet, forward using udphandler
+        """
+        als = self.recv_buf
+        while len(als) > 0 and als[0] != Segment.INDENTITY:
+            als.pop(0)
+
+        length = struct.unpack('>H', als[2:4])[0]
+        if len(als) < length:
+            return
+        # has a Segment
+        segment = Segment(als[:len])
+        del als[:len]
+        print(segment)
+
     def handle_read(self):
         self.recv_buf += self.recv(100)
+        self._get_packet()
 
     def handle_write(self):
         if len(self.send_buf) == 0:
@@ -64,7 +82,8 @@ class UdpHandler(asyncore.dispatcher):
             self.send_queue.pop(0)
             return
         ret = self.socket.sendto(*self.send_queue[0])
-        self.send_queue[0][0] = self.send_queue[0][0][ret:]
+        # self.send_queue[0][0] = self.send_queue[0][0][ret:]
+        del self.send_queue[0][0][0:ret]
 
 
 if __name__ == '__main__':

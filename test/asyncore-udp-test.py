@@ -33,7 +33,8 @@ class UDPServer(asyncore.dispatcher):
             self.send_buf.pop(0)
             return
         ret = self.socket.sendto(*self.send_buf[0])
-        self.send_buf[0][0] = self.send_buf[0][0][ret:]
+        # self.send_buf[0][0] = self.send_buf[0][0][ret:]
+        del self.send_buf[0][0][:ret]
 
 
 class UDPClient(asyncore.dispatcher):
