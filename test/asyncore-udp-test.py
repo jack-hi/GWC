@@ -17,8 +17,7 @@ class UDPServer(asyncore.dispatcher):
     def handle_read(self):
         data, addr = self.socket.recvfrom(100)
         print(f'server recv: {addr}, data {data}')
-        # TODO send    except KeyboardInterrupt:
-        print("keyboadr interrupt")
+        # TODO send
         if self.recv_buf.get(addr) is None:
             self.recv_buf[addr] = bytearray(data)
         else:
@@ -52,9 +51,9 @@ if __name__ == '__main__':
     server = UDPServer()
     client = UDPClient()
     client.socket.sendto(b'hello async UDP server', ("", 0xbac1))
-
+    print("Start asyncore UDP test")
     # threading.Thread(target=asyncore.loop,daemon=True).start()
     threading.Thread(target=asyncore.loop).start()
 
-    print("Start asyncore UDP test")
+
 
