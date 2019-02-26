@@ -175,6 +175,30 @@ class Segment(Packet):
         return tmp
 
 
+class SimpleWrap(Packet):
+    """
+    " simple wrap
+    " +------+------+-------------+
+    " | 0x8e | 0x8f |    length   |
+    " +------+------+-------------+
+    " | type |
+    " +---------------------------+
+    " |      dispatcherId         |
+    " +---------------------------+
+    " |          ip               |
+    " +-------------+-------------+
+    " |    port     |
+    " +-------------+-------------+
+    " |           DATA            |
+    " +---------------------------+
+    """
+    IDENTITY = [0x8e, 0x8f]
+    def __init__(self):
+        super().__init__()
+        self.length = None
+        self.type = None
+        self.daddr = None #IP:PORT
+
 if __name__ == '__main__':
     seg = Segment()
     seg.update(8, 1000, 2, [i for i in range(0, 10)])
