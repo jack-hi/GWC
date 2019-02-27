@@ -5,6 +5,8 @@
 from copy import copy as _copy
 from struct import pack, unpack
 from binascii import hexlify
+from socket import inet_aton, inet_ntoa
+from binascii import crc_hqx
 
 
 class Packet(object):
@@ -123,10 +125,16 @@ class Segment(Packet):
 
     def update(self, flags, id, seq, data):
         self.flags = flags
-        self.length = 8 if data == None else 8 + len(data)
         self.packet_id = id
         self.seq = seq
-        self.data = data
+        if data is None:
+            self.length = 8
+            return
+        else:
+            if not isinstance(data, (list, bytes, bytearray)):
+                raise ValueError(" value type error ")
+            self.data = data
+            self.length = 8 if data == None else 8 + len(data)
 
     def encode(self):
         self.put(self.identity)
@@ -134,7 +142,8 @@ class Segment(Packet):
         self.put_short(self.length)
         self.put_short(self.packet_id)
         self.put_short(self.seq)
-        self.put_data(self.data)
+        if self.data is not None:
+            self.put_data(self.data)
 
         return self
 
@@ -179,7 +188,7 @@ class SimpleWrap(Packet):
     """
     " simple wrap
     " +------+------+-------------+
-    " | 0x8e | 0x8f |    length   |
+    " | 0x55 | 0xaa |    length   |
     " +------+------+-------------+
     " | type |
     " +---------------------------+
@@ -187,23 +196,79 @@ class SimpleWrap(Packet):
     " +---------------------------+
     " |          ip               |
     " +-------------+-------------+
-    " |    port     |
+    " |    port     |   17 bytes  |
     " +-------------+-------------+
     " |           DATA            |
-    " +---------------------------+
+    " +-------------+-------------+
+    " |    CRC      |
+    " +-------------+
+    : length = from 'type' to end
+    : reserved 17 byres
+    : CRC = from 'length' to 'DATA' [2:}
     """
-    IDENTITY = [0x8e, 0x8f]
+    IDENTITY = [0x55, 0xaa]
+
     def __init__(self):
         super().__init__()
         self.length = None
         self.type = None
+        self.disp_id = None
         self.daddr = None #IP:PORT
+        self.data = None
+        self.crc = None
+
+    def update(self, type, disp_id, daddr, data):
+        """
+        :param type:
+        :param disp_id:
+        :param daddr: like 11.22.33.44:5555
+        :return: None
+        """
+        self.type = type
+        self.disp_id = disp_id
+        self.daddr = daddr
+        if data is None:
+            self.length = 28
+            return
+        if not isinstance(data, (list, bytes, bytearray)):
+            raise ValueError("vaule type error")
+        self.data = data
+        self.length = 28 + len(self.data) + 2
+
+    def encode(self):
+        self.put_data(SimpleWrap.IDENTITY)  # identity: 2
+        self.put_short(self.length)  # length: 2
+        self.put(self.type)  # type: 1
+        self.put_long(self.disp_id)  # id: 4
+        ip, port  = self.daddr.split(':')
+        self.put_data(inet_aton(ip))  # ip: 4
+        self.put_short(int(port))  # port: 2
+        self.put_data(bytearray(17))  # reserved: 17
+        if self.data is not None:
+            self.put_data(self.data)  # data: n
+        self.put_short(crc_hqx(self.pdata[2:], 0))
+
+    def decode(self):
+        self.get_short()  # indentiy
+        self.length = self.get_short()  # length
+        self.type = self.get()  # type
+        self.disp_id = self.get_long()  # id
+        self.daddr = ':'.join([inet_ntoa(self.get_long()), str(self.get_short())])
+        self.get_data(17)  # reserved
+        self.data = self.get_data(self.length - 28)
+        self.crc = self.get_short()
+
 
 if __name__ == '__main__':
     seg = Segment()
     seg.update(8, 1000, 2, [i for i in range(0, 10)])
     seg.encode()
     print(seg)
+
+    sr = SimpleWrap()
+    sr.update(1, 101, '10.98.1.178:7894', [i for i in range(0, 10)])
+    sr.encode()
+    print(sr)
     '''
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
