@@ -135,6 +135,7 @@ class Segment(Packet):
                 raise ValueError(" value type error ")
             self.data = data
             self.length = 8 if data == None else 8 + len(data)
+        return self
 
     def encode(self):
         self.put(self.identity)

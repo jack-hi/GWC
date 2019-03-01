@@ -13,7 +13,8 @@ SERVER_ADDRESS = ("", 7896)
 log = logging.getLogger("seg.disp")
 log.setLevel(logging.DEBUG)
 
-class PacketDispatcher():
+
+class PacketDispatcher:
     """
          TCP <------> UDP
     """
