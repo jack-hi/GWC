@@ -6,7 +6,9 @@ from copy import copy as _copy
 from struct import pack, unpack
 from binascii import hexlify
 from socket import inet_aton, inet_ntoa
-from binascii import crc_hqx
+from time import localtime
+from mcrptos import AES128, MD5
+from crc16 import crc16xmodem
 
 
 class Packet(object):
@@ -23,7 +25,9 @@ class Packet(object):
             raise TypeError("bytes or bytearray needed.")
 
     def encode(self):
-        raise NotImplemented("Abstract Method")
+        # raise NotImplemented("Abstract Method")
+        if len(self.pdata) is not 0:
+            raise RuntimeError("Could not call this method more than once")
 
     def decode(self):
         raise NotImplemented("Abstract Method")
@@ -181,8 +185,97 @@ class Segment(Packet):
             f"length: {self.length}, " \
             f"packet_id: {self.packet_id}, " \
             f"segment_num: {self.seq}\n"
-
         return tmp
+
+
+class LgiFrame(Packet):
+    """
+    frame: (big-endian)
+    +--------+--------+--------+--------+
+    |      year       | month  |   day  |
+    +--------+--------+--------+--------+
+    |  hour  | minute | second |    0   |
+    +--------+--------+--------+--------+
+    |                 0                 |
+    +--------+--------+--------+--------+
+    |                 0                 |
+    +--------+--------+--------+--------+
+    |                                   |
+    +                                   +
+    |                                   |
+    +              AES/MD5              +
+    |                                   |
+    +                                   +
+    |                                   |
+    +--------+--------+--------+--------+
+    """
+    def __init__(self, key=None):
+        super().__init__()
+        if key is None:
+            key = b'1234567890123456'
+        self.key = key
+
+    def encode(self):
+        super().encode()
+        time = localtime()
+        self.put_short(time.tm_year)
+        self.put(time.tm_mon)
+        self.put(time.tm_mday)
+        self.put(time.tm_hour)
+        self.put(time.tm_min)
+        self.put(time.tm_sec)
+        self.put_data(bytes(9))
+        aes_crypto = AES128(self.key).encrypt(bytes(self.pdata))
+        self.put_data(MD5().digest(aes_crypto))
+        return self
+
+    def verify(self, data):
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("data must be a byte-like array.")
+        if len(data) is not 16*2:
+            raise ValueError("data length error.")
+        crypto = MD5().digest(AES128(self.key).encrypt(bytes(data[:16])))
+        return crypto == data[16:]
+
+
+class HbFrame(Packet):
+    """
+    HbFrame: big-endian
+    +--------+--------+--------+--------+
+    |    sequence     |     year        |
+    +--------+--------+--------+--------+
+    | month  |  day   |  hour  | minute |
+    +--------+--------+--------+--------+
+    | second |           0              |
+    +--------+--------+--------+--------+
+    |        0        |
+    +--------+--------+
+    """
+    seq = 0
+    def __init__(self):
+        super().__init__()
+
+    def encode(self):
+        super().encode()
+        self.put_short(self.get_seq())
+        self.update_seq()
+        time = localtime()
+        self.put_short(time.tm_year)
+        self.put(time.tm_mon)
+        self.put(time.tm_mday)
+        self.put(time.tm_hour)
+        self.put(time.tm_min)
+        self.put(time.tm_sec)
+        self.put_data(bytes(5))
+        return self
+
+    def update_seq(self):
+        HbFrame.seq += 1
+
+    def get_seq(self):
+        if HbFrame.seq > 0xFFFF:
+            HbFrame.seq = 0
+        return HbFrame.seq
 
 
 class SimpleWrap(Packet):
@@ -205,71 +298,112 @@ class SimpleWrap(Packet):
     " +-------------+
     : length = from 'type' to end
     : reserved 17 byres
-    : CRC = from 'length' to 'DATA' [2:}
+    : CRC = from 'length' to 'DATA' [2:]
     """
     IDENTITY = [0x55, 0xaa]
 
-    def __init__(self):
+    def __init__(self, type=None, id=None, dip=None, dport=None, data=None):
         super().__init__()
-        self.length = None
-        self.type = None
-        self.disp_id = None
-        self.daddr = None #IP:PORT
-        self.data = None
-        self.crc = None
+        self.length = 30
+        self.type = type
+        self.disp_id = id
+        self.dip = dip #IP:PORT
+        self.dport = dport
+        self.data = data
+        self.crc = 0
 
-    def update(self, type, disp_id, daddr, data):
+    def update(self, type=None, id=None, dip=None, dport=None, data=None):
         """
         :param type:
         :param disp_id:
         :param daddr: like 11.22.33.44:5555
         :return: None
         """
-        self.type = type
-        self.disp_id = disp_id
-        self.daddr = daddr
-        if data is None:
-            self.length = 28
-            return
-        if not isinstance(data, (list, bytes, bytearray)):
-            raise ValueError("vaule type error")
-        self.data = data
-        self.length = 28 + len(self.data) + 2
+        if type is not None: self.type = type
+        if id is not None: self.disp_id = id
+        if dip is not None: self.dip = dip
+        if dport is not None: self.dport = dport
+        if data is not None:
+            if not isinstance(data, (list, bytes, bytearray)):
+                raise ValueError("value type error")
+            self.data = data
+        return self
 
     def encode(self):
+        super().encode()
         self.put_data(SimpleWrap.IDENTITY)  # identity: 2
+        if self.data is not None:
+            self.length += len(self.data)
         self.put_short(self.length)  # length: 2
         self.put(self.type)  # type: 1
         self.put_long(self.disp_id)  # id: 4
-        ip, port  = self.daddr.split(':')
-        self.put_data(inet_aton(ip))  # ip: 4
-        self.put_short(int(port))  # port: 2
-        self.put_data(bytearray(17))  # reserved: 17
+        self.put_data(inet_aton(self.dip))  # ip: 4
+        self.put_short(self.dport)  # port: 2
+        self.put_data(bytes(17))  # reserved: 17
         if self.data is not None:
             self.put_data(self.data)  # data: n
-        self.put_short(crc_hqx(self.pdata[2:], 0))
+        crc = crc16xmodem(bytes(self.pdata[2:]))
+        self.put(crc&0xFF)
+        self.put((crc&0xFF00) >> 8)
+        return self
 
-    def decode(self):
-        self.get_short()  # indentiy
-        self.length = self.get_short()  # length
-        self.type = self.get()  # type
-        self.disp_id = self.get_long()  # id
-        self.daddr = ':'.join([inet_ntoa(self.get_long()), str(self.get_short())])
-        self.get_data(17)  # reserved
-        self.data = self.get_data(self.length - 28)
-        self.crc = self.get_short()
+    def decode(self, data):
+        if not isinstance(data, (bytes, bytearray)):
+            raise ValueError("data type ERROR, must be byte-like array.")
+        p = Packet(data)
+        if SimpleWrap.IDENTITY != p.get_data(2):
+            raise ValueError("packet data error, identity error")
+        self.length = p.get_short()
+        if len(p.pdata) != self.length:
+            raise ValueError("packet data error, Length error")
+        crc = crc16xmodem(bytes(p.pdata[:-2]))
+        self.type = p.get()
+        self.disp_id = p.get_long()
+        self.dip = inet_ntoa(p.get_data(4))
+        self.dport = p.get_short()
+        p.get_data(17)
+        self.data = p.get_data(self.length-30)
+        crcl = p.get()
+        crch = p.get()
+        self.crc = crch<<8 | crcl
+        if crc != self.crc:
+            raise ValueError("packet data error, CRC error")
+        return self
 
 
 if __name__ == '__main__':
+
+    l = LgiFrame()
+    t1 = l.encode().get_all()
+    print(t1)
+    if l.verify(t1):
+        print("OK")
+
+
+    import time
+
+    h1 = HbFrame()
+    print(h1.encode())
+    time.sleep(1)
+    h2 = HbFrame()
+    print(h2.encode())
+    time.sleep(1)
+    h3 = HbFrame()
+    print(h3.encode())
+
+    """
+    time.sleep(1)
     seg = Segment()
     seg.update(8, 1000, 2, [i for i in range(0, 10)])
     seg.encode()
     print(seg)
+    """
 
     sr = SimpleWrap()
-    sr.update(1, 101, '10.98.1.178:7894', [i for i in range(0, 10)])
+    sr.update(1, 101, '10.98.1.178', 7894, h3.get_all())
     sr.encode()
     print(sr)
+
     '''
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
