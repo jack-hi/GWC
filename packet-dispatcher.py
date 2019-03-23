@@ -7,21 +7,18 @@ import threading
 import logging
 import queue
 import time
-import segment
+from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame, FcFrame
 
-SERVER_ADDRESS = ("", 7896)
 
 Log = logging.getLogger("App0")
 Log.setLevel(logging.DEBUG)
-
 s_handler = logging.StreamHandler()  # sys.stderr
 s_handler.setLevel(logging.DEBUG)
 s_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s [%(levelname)s] %(funcName)s(): %(message)s"))
 Log.addHandler(s_handler)
-
 f_handler = logging.FileHandler("app.log")
 f_handler.setLevel(logging.DEBUG)
-f_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s [%(levelname)s] %(module)s::%(funcName)s(): %(message)s"))
+f_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s [%(levelname)s] %(module)s:%(funcName)s(): %(message)s"))
 Log.addHandler(f_handler)
 
 
@@ -60,6 +57,7 @@ class TcpHandler(asyncore.dispatcher):
     def handle_read(self):
         buf = self.recv(100)
         if len(buf) is 0:
+            Log.error("**Disconnect from server**")
             return
         self.recv_buf += buf
         Log.debug("Received: " + self.recv_buf.hex())
@@ -70,7 +68,7 @@ class TcpHandler(asyncore.dispatcher):
             try:
                 self.send_buf += self.wq.get_nowait()
                 self.wq.task_done()
-            except(queue.Empty):
+            except queue.Empty:
                 return
         if len(self.send_buf):
             ret = self.send(self.send_buf)
@@ -107,7 +105,9 @@ class App(threading.Thread):
     def __init__(self, ip, port, udp_port = 0xbac0):
         super().__init__()
         self.running = False
-        self.state = 0
+        self.auth = False
+        self.ip = ip
+        self.port = port
 
         self.tcpwq = queue.Queue()
         self.tcprq = queue.Queue()
@@ -120,14 +120,37 @@ class App(threading.Thread):
 
     def run(self):
         while self.running:
-            if self.state is 0:
-                self.send(segment.LgiFrame().encode().get_all())
+            if not self.auth:
+                pkt = Dwrap(LgiFrame.TYPE, 101, self.ip, self.port)
+                pkt.update(data=LgiFrame().encode().get_all())
+                self.send(pkt.encode().get_all())
+
+            else:
+                pkt = Dwrap(HbFrame.TYPE, 101, self.ip, self.port)
+                pkt.update(data=HbFrame().encode().get_all())
+                Log.info("Send HbFrame. ")
+                self.send(pkt.encode().get_all())
+
+
             try:
-                item = self.tcprq.get()
+                item = self.tcprq.get(timeout=10)
                 self.tcprq.task_done()
-                Log.info("Transport recv: " + item.hex())
-                self.state = 1
-            except(queue.Empty):
+                pkt = Dwrap().decode(item)
+                if pkt is None:
+                    continue
+                if pkt.type == LgiFrame.TYPE:
+                    if LgiFrame().verify(pkt.data):
+                        self.auth = True
+                        Log.info("auth ok.")
+                elif pkt.type == BacFrame.TYPE:
+                    pass
+                elif pkt.type == FcFrame.TYPE:
+                    pass
+                elif pkt.type == WxFrame.TYPE:
+                    pass
+                else:
+                    Log.warning("Packet Type error.")
+            except queue.Empty:
                 time.sleep(1)
 
     def initialize(self):
@@ -139,5 +162,5 @@ class App(threading.Thread):
 
 
 if __name__ == '__main__':
-    app = App('10.98.1.178', 41400)
+    app = App('127.0.0.1', 41400)
     app.initialize()
