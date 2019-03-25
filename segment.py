@@ -7,7 +7,7 @@ from struct import pack, unpack
 from binascii import hexlify
 from socket import inet_aton, inet_ntoa
 from time import localtime
-from mcrptos import AES128, MD5
+from mcrptos import AES128, MD5, Icrc16
 from crc16 import crc16xmodem
 import time
 import logging
@@ -161,9 +161,11 @@ class LgiFrame(Packet):
     TYPE = 1
     def __init__(self, key=None):
         super().__init__()
+
         if key is None:
-            key = b'1234567890123456'
-        self.key = key
+            self.key = bytes([0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0x31,0x32,0x33,0x34,0x35])
+        else:
+            self.key = key
 
     def encode(self):
         super().encode()
@@ -176,7 +178,7 @@ class LgiFrame(Packet):
         self.put(time.tm_sec)
         self.put_data(bytes(9))
         aes_crypto = AES128(self.key).encrypt(bytes(self.pdata))
-        self.put_data(MD5().digest(aes_crypto))
+        self.put_data(MD5().digest(aes_crypto[:16]))
         return self
 
     def verify(self, data):
@@ -188,7 +190,7 @@ class LgiFrame(Packet):
             #raise ValueError("data length error.")
             Log.warning("Type Error, data length error.")
             return False
-        crypto = MD5().digest(AES128(self.key).encrypt(bytes(data[:16])))
+        crypto = MD5().digest(AES128(self.key).encrypt(bytes(data[:16]))[:16])
         return crypto == data[16:]
 
 
@@ -365,7 +367,8 @@ class Dwrap(Packet):
         self.put_data(bytes(17))  # reserved: 17
         if self.data is not None:
             self.put_data(self.data)  # data: n
-        crc = crc16xmodem(bytes(self.pdata[2:]))
+        # crc = crc16xmodem(bytes(self.pdata[2:]))
+        crc = Icrc16.CRC16(bytes(self.pdata[2:]))
         self.put(crc&0xFF)
         self.put((crc&0xFF00) >> 8)
         return self
@@ -380,7 +383,8 @@ class Dwrap(Packet):
             # raise ValueError("packet data error, identity error")
             Log.warning("Value Error, identity error.")
             return None
-        crc = crc16xmodem(bytes(p.pdata[:-2]))
+        # crc = crc16xmodem(bytes(p.pdata[:-2]))
+        crc = Icrc16.CRC16(bytes(p.pdata[:-2]))
         self.length = p.get_short()
         if len(p.pdata) != self.length:
             # raise ValueError("packet data error, Length error")
