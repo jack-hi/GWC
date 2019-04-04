@@ -3,12 +3,11 @@
 
 import asyncore
 import socket
-import threading
 import logging
 import queue
 import time
 from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame, FcFrame
-
+from threading import Thread, Timer
 
 Log = logging.getLogger("App0")
 Log.setLevel(logging.DEBUG)
@@ -29,7 +28,7 @@ class TcpHandler(asyncore.dispatcher):
         self.connect((ip, port))
         self.recv_buf = bytearray()
         self.send_buf = bytearray()
-        # handle recved data
+        # handle received data
         self.wfhd = None
         self._dec_func = None
         # send data
@@ -101,11 +100,12 @@ class UdpHandler(asyncore.dispatcher):
         del self.send_queue[0][0][0:ret]
 
 
-class App(threading.Thread):
+class App(Thread):
     def __init__(self, ip, port, udp_port = 0xbac0):
         super().__init__()
         self.running = False
         self.auth = False
+        self.state =
         self.ip = ip
         self.port = port
 
@@ -113,45 +113,44 @@ class App(threading.Thread):
         self.tcprq = queue.Queue()
         self.tcp_handler = TcpHandler(ip, port, self.tcpwq, self.tcprq)
         # self.udp_handler = UdpHandler(udp_port)
-        self._thread = threading.Thread(target=asyncore.loop)
+        self._thread = Thread(target=asyncore.loop)
 
     def send(self, data):
         self.tcpwq.put(data)
 
     def run(self):
         while self.running:
+            if not self.tcp_handler.connected:
+                time.sleep(1); continue
+
             if not self.auth:
-                pkt = Dwrap(LgiFrame.TYPE, 101, self.ip, self.port)
-                pkt.update(data=LgiFrame().encode().get_all())
-                self.send(pkt.encode().get_all())
-
-            else:
-                pkt = Dwrap(HbFrame.TYPE, 101, self.ip, self.port)
-                pkt.update(data=HbFrame().encode().get_all())
-                Log.info("Send HbFrame. ")
-                self.send(pkt.encode().get_all())
-
-
-            try:
-                item = self.tcprq.get(timeout=10)
-                self.tcprq.task_done()
-                pkt = Dwrap().decode(item)
-                if pkt is None:
+                pkt = Dwrap(LgiFrame.TYPE, 999, self.ip, self.port)
+                pkt.update(data=LgiFrame().get_packet())
+                self.send(pkt.get_packet())
+                try:
+                    item = self.tcprq.get(timeout=10)
+                    self.tcprq.task_done()
+                    pkt = Dwrap().decode(item)
+                    if pkt is not None:
+                        if pkt.type is LgiFrame.TYPE:
+                            if (LgiFrame().verify(pkt.data))
+                                self.auth = True
+                                Log.info("Authenticate successed.")
+                        else:
+                            Log.warning("Expeced for LgiFrame. but received: %d" % pkt.type)
+                    else:
+                        Log.warning("Received a frame error packet.")
+                except queue.Empty:
+                    Log.warning("Waiting for LgiFrame timeout. clear send and try again.")
+                    if not self.tcpwq.empty():
+                        self.tcpwq.get()
+                        self.tcpwq.task_done()
                     continue
-                if pkt.type == LgiFrame.TYPE:
-                    if LgiFrame().verify(pkt.data):
-                        self.auth = True
-                        Log.info("auth ok.")
-                elif pkt.type == BacFrame.TYPE:
-                    pass
-                elif pkt.type == FcFrame.TYPE:
-                    pass
-                elif pkt.type == WxFrame.TYPE:
-                    pass
-                else:
-                    Log.warning("Packet Type error.")
-            except queue.Empty:
-                time.sleep(1)
+            else:
+                # send HbFrame Timer
+                # handle received packet
+
+
 
     def initialize(self):
         Log.info("Start Transport thread.")
@@ -162,5 +161,5 @@ class App(threading.Thread):
 
 
 if __name__ == '__main__':
-    app = App('127.0.0.1', 41400)
+    app = App('10.98.1.178', 46060)
     app.initialize()

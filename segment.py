@@ -8,7 +8,6 @@ from binascii import hexlify
 from socket import inet_aton, inet_ntoa
 from time import localtime
 from mcrptos import AES128, MD5, Icrc16
-from crc16 import crc16xmodem
 import time
 import logging
 
@@ -18,7 +17,6 @@ Log = logging.getLogger("App0")
 
 class Packet(object):
     def __init__(self, data = None, *args, **kwargs):
-        # super().__init__(*args, **kwargs)
 
         if data is None:
             self.pdata = bytearray()
@@ -29,18 +27,8 @@ class Packet(object):
         else:
             raise TypeError("bytes or bytearray needed.")
 
-    def encode(self):
-        # raise NotImplemented("Abstract Method")
-        if len(self.pdata) is not 0:
-            raise RuntimeError("Could not call this method more than once")
-
-    def decode(self):
-        raise NotImplemented("Abstract Method")
-
-    def get_all(self):
-        all = self.pdata[:]
-        del self.pdata[:]
-        return all
+    def get_packet(self):
+        return self.pdata
 
     def get(self):
         """ get the first byte in the byte array and delete from the bytearray """
@@ -91,8 +79,7 @@ class Packet(object):
 
     def __str__(self):
         hexstr = str(hexlify(self.pdata), 'ascii').upper()
-        sep = ' '
-        return sep.join(hexstr[i:i+2] for i in range(0, len(hexstr), 2))
+        return ' '.join(hexstr[i:i+2] for i in range(0, len(hexstr), 2))
 
 
 class HbFrame(Packet):
@@ -113,9 +100,9 @@ class HbFrame(Packet):
     seq = 0
     def __init__(self):
         super().__init__()
+        self._encode()
 
-    def encode(self):
-        super().encode()
+    def _encode(self):
         self.put_short(self.get_seq())
         self.update_seq()
         time = localtime()
@@ -126,7 +113,6 @@ class HbFrame(Packet):
         self.put(time.tm_min)
         self.put(time.tm_sec)
         self.put_data(bytes(5))
-        return self
 
     def update_seq(self):
         HbFrame.seq += 1
@@ -135,6 +121,7 @@ class HbFrame(Packet):
         if HbFrame.seq > 0xFFFF:
             HbFrame.seq = 0
         return HbFrame.seq
+
 
 
 class LgiFrame(Packet):
@@ -157,18 +144,21 @@ class LgiFrame(Packet):
     +                                   +
     |                                   |
     +--------+--------+--------+--------+
+    ase = AES128(frame[0:16])
+    ret = MD5(ase[:16])
+
     """
     TYPE = 1
     def __init__(self, key=None):
         super().__init__()
 
         if key is None:
-            self.key = bytes([0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0x31,0x32,0x33,0x34,0x35])
+            self.key = b'0123456789012345'
         else:
             self.key = key
+        self._encode()
 
-    def encode(self):
-        super().encode()
+    def _encode(self):
         time = localtime()
         self.put_short(time.tm_year)
         self.put(time.tm_mon)
@@ -179,7 +169,6 @@ class LgiFrame(Packet):
         self.put_data(bytes(9))
         aes_crypto = AES128(self.key).encrypt(bytes(self.pdata))
         self.put_data(MD5().digest(aes_crypto[:16]))
-        return self
 
     def verify(self, data):
         if not isinstance(data, (bytes, bytearray)):
@@ -333,65 +322,60 @@ class Dwrap(Packet):
     """
     IDENTITY = bytes([0x55, 0xaa])
 
+
     def __init__(self, type=None, id=None, dip=None, dport=None, data=None):
         super().__init__()
         self.length = 30
-        self.type = type
-        self.disp_id = id
-        self.dip = dip #IP:PORT
-        self.dport = dport
-        self.data = data
-        self.crc = 0
-
-    def update(self, type=None, id=None, dip=None, dport=None, data=None):
-        if type is not None: self.type = type
-        if id is not None: self.disp_id = id
-        if dip is not None: self.dip = dip
-        if dport is not None: self.dport = dport
+        self.type = 0 if type is None else type
+        self.id = 0 if id is None else id
+        self.dip = "0.0.0.0" if dip is None else dip
+        self.dport = 0 if dport is None else dport
+        self.data = None
         if data is not None:
-            if not isinstance(data, (list, bytes, bytearray)):
+            if not isinstance(data, (bytes, bytearray)):
                 raise ValueError("value type error")
             self.data = data
-        return self
+        self.crc = 0
+        # self._encode()
 
-    def encode(self):
-        super().encode()
+    def update(self, **kargs):
+        for arg in kargs.keys():
+            if arg in ("type", "id", "dip", "dport", "data"):
+                self.__setattr__(arg, kargs.get(arg))
+        self.get_packet().clear()
+        self._encode()
+
+    def _encode(self):
         self.put_data(Dwrap.IDENTITY)  # identity: 2
         if self.data is not None:
             self.length = 30 + len(self.data)
         self.put_short(self.length)  # length: 2
         self.put(self.type)  # type: 1
-        self.put_long(self.disp_id)  # id: 4
+        self.put_long(self.id)  # id: 4
         self.put_data(inet_aton(self.dip))  # ip: 4
         self.put_short(self.dport)  # port: 2
         self.put_data(bytes(17))  # reserved: 17
         if self.data is not None:
             self.put_data(self.data)  # data: n
-        # crc = crc16xmodem(bytes(self.pdata[2:]))
-        crc = Icrc16.CRC16(bytes(self.pdata[2:]))
-        self.put(crc&0xFF)
-        self.put((crc&0xFF00) >> 8)
-        return self
+        self.crc = Icrc16.CRC16(bytes(self.pdata[2:]))
+        self.put(self.crc&0xFF)
+        self.put((self.crc&0xFF00) >> 8)
 
     def decode(self, data):
         if not isinstance(data, (bytes, bytearray)):
-            # raise ValueError("data type ERROR, must be byte-like array.")
             Log.warning("Value Error, data must be byte-like array.")
             return None
         p = Packet(data)
         if Dwrap.IDENTITY != p.get_data(2):
-            # raise ValueError("packet data error, identity error")
             Log.warning("Value Error, identity error.")
             return None
-        # crc = crc16xmodem(bytes(p.pdata[:-2]))
         crc = Icrc16.CRC16(bytes(p.pdata[:-2]))
         self.length = p.get_short()
         if len(p.pdata) != self.length:
-            # raise ValueError("packet data error, Length error")
             Log.warning("Value Error, pakcet length error.")
             return None
         self.type = p.get()
-        self.disp_id = p.get_long()
+        self.id = p.get_long()
         self.dip = inet_ntoa(p.get_data(4))
         self.dport = p.get_short()
         p.get_data(17)
@@ -400,31 +384,27 @@ class Dwrap(Packet):
         crch = p.get()
         self.crc = crch<<8 | crcl
         if crc != self.crc:
-            # raise ValueError("packet data error, CRC error")
             Log.warning("Value Error, packet CRC error.")
             return None
         return self
+
+    def __str__(self):
+        return "Dwarp {length=%d, type=%d, id=%d, ip=%s:%d, crc=0x%02X}" % \
+               (self.length, self.type, self.id, self.dip, self.dport, self.crc)
 
 
 if __name__ == '__main__':
 
     l = LgiFrame()
-    t1 = l.encode().get_all()
+    t1 = l.get_packet()
     print(t1)
     if l.verify(t1):
         print("OK")
 
-    h1 = HbFrame()
-    print(h1.encode())
-    time.sleep(1)
-    h2 = HbFrame()
-    print(h2.encode())
-    time.sleep(1)
     h3 = HbFrame()
-    print(h3.encode())
+    print(h3)
 
     sr = Dwrap()
-    sr.update(1, 101, '10.98.1.178', 7894, h3.get_all())
-    sr.encode()
+    sr.update(type=1, id=101, dip='10.98.1.178', dport=7894, data=h3.get_packet())
     print(sr)
 
