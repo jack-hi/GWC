@@ -336,7 +336,7 @@ class Dwrap(Packet):
                 raise ValueError("value type error")
             self.data = data
         self.crc = 0
-        # self._encode()
+        self._encode()
 
     def update(self, **kargs):
         for arg in kargs.keys():
