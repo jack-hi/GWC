@@ -186,7 +186,7 @@ class LgiFrame(Packet):
 class BacFrame(Packet):
     TYPE = 2
     def __init__(self, data):
-        super().__init(data)
+        super().__init__(data)
 
 
 class FcFrame(Packet):

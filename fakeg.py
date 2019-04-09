@@ -6,7 +6,7 @@ import socket
 import logging
 import queue
 import time
-from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame, FcFrame
+from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame, FcFrame, Packet
 from threading import Thread, Timer
 
 Log = logging.getLogger("App0")
@@ -24,11 +24,14 @@ Log.addHandler(f_handler)
 
 
 class TcpHandler(asyncore.dispatcher):
-    def __init__(self, ip, port, wq, rq):
+    def __init__(self, id, ip, port, wq, rq):
         super().__init__()
         self.remote_offline = False
         self.create_socket()
         self.connect((ip, port))
+        self.id = id
+        self.ip = ip
+        self.port = port
         self.recv_buf = bytearray()
         self.send_buf = bytearray()
         # handle received data
@@ -36,6 +39,11 @@ class TcpHandler(asyncore.dispatcher):
         # send data
         self.wq = wq
         self.rq = rq
+        # forward bacnet
+        self.udp_handler = None
+
+    def set_udp_handler(self, udp):
+        self.udp_handler = udp
 
     def _decode(self):
         while len(self.recv_buf) >= 4:
@@ -58,12 +66,17 @@ class TcpHandler(asyncore.dispatcher):
     def _handler(self):
         if self.packet is not None:
             # Log.info("Received frame: %s..." % self.packet[:15].hex())
-            type = self.packet[4]
+            pkt = Dwrap().decode(self.packet)
+            if pkt is None:
+                return
+            type = pkt.type
             if type == LgiFrame.TYPE or type == HbFrame.TYPE:
-                Log.info("Handle: lgi/hb")
-                self.rq.put(self.packet)
+                Log.info("Handle: lgi/hb, %s" % str(pkt))
+                self.rq.put(pkt)
+            elif type == BacFrame.TYPE:
+                 Log.info("Handle: Bacnet/IP message: %s" % str(pkt))
+                 self.udp_handler.send_queue.append((pkt.data, ("10.98.1.218", 0xBAC0)))
             else:
-                pkt = Dwrap().decode(self.packet)
                 Log.info("Handle: %s" % str(pkt))
                 # TODO
             self.packet = None
@@ -83,8 +96,9 @@ class TcpHandler(asyncore.dispatcher):
     def handle_write(self):
         if len(self.send_buf) is 0:
             try:
-                self.send_buf += self.wq.get_nowait()
+                pkt = self.wq.get_nowait()
                 self.wq.task_done()
+                self.send_buf += pkt.get_packet()
             except queue.Empty:
                 return
         if len(self.send_buf):
@@ -100,13 +114,24 @@ class UdpHandler(asyncore.dispatcher):
         self.bind(('', port))
         self.recv_queue = set() # item: {addr: message}
         self.send_queue = list() # item: [message, addr]
+        # tcp handler
+        self.tcp_handler = None
+
+    def set_tcp_handler(self, tcp):
+        self.tcp_handler = tcp
 
     def handle_read(self):
-        data, addr = self.socket.recvfrom(100)
-        if self.recv_queue.get(addr) is None:
-            self.recv_queue[addr] = bytearray(data)
-        else:
-            self.recv_queue[addr] += data
+        data, addr = self.socket.recvfrom(1024)
+        # if self.recv_queue.get(addr) is None:
+        #     self.recv_queue[addr] = bytearray(data)
+        # else:
+        #     self.recv_queue[addr] += data
+        bac = BacFrame(data)
+        Log.info("Received BACnet/IP data: %s" % str(bac))
+        pkt = Dwrap(BacFrame.TYPE, self.tcp_handler.id,
+                    self.tcp_handler.ip, self.tcp_handler.port,
+                    bac.get_packet()).get_packet()
+        self.tcp_handler.send_buf += pkt
 
     def handle_write(self):
         if len(self.send_queue) == 0:
@@ -114,12 +139,13 @@ class UdpHandler(asyncore.dispatcher):
         if len(self.send_queue[0][0]) == 0:
             self.send_queue.pop(0)
             return
+        Log.info("Send BACnet/IP data: %s" % str(self.send_queue[0]))
         ret = self.socket.sendto(*self.send_queue[0])
         del self.send_queue[0][0][0:ret]
 
 
 class App(Thread):
-    def __init__(self, id, ip, port, udp_port = 0xbac0):
+    def __init__(self, id, ip, port, udp_port = 0xbac1):
         super().__init__()
         self.running = False
         self.authenticated = False
@@ -130,8 +156,10 @@ class App(Thread):
 
         self.tcpwq = queue.Queue()
         self.tcprq = queue.Queue()
-        self.tcp_handler = TcpHandler(ip, port, self.tcpwq, self.tcprq)
-        # self.udp_handler = UdpHandler(udp_port)
+        self.tcp_handler = TcpHandler(id, ip, port, self.tcpwq, self.tcprq)
+        self.udp_handler = UdpHandler(udp_port)
+        self.tcp_handler.set_udp_handler(self.udp_handler)
+        self.udp_handler.set_tcp_handler(self.tcp_handler)
         self._thread = Thread(target=asyncore.loop)
 
     def is_connect(self):
@@ -144,22 +172,27 @@ class App(Thread):
         return self.tcp_handler.remote_offline
 
     def send(self, data):
-        if isinstance(data, (bytes, bytearray)):
-            self.tcpwq.put(data)
-        elif isinstance(data, Dwrap):
-            self.tcpwq.put(data.get_packet())
+        if isinstance(data, Packet):
+            pkt = Dwrap(data.TYPE, self.id, self.ip, self.port, data.get_packet())
+            self.tcpwq.put(pkt)
         else:
-            Log.warning("Data type error, need bytes or Dwrap.")
+            Log.warning("Data type must be Packet.")
+        # if isinstance(data, (bytes, bytearray)):
+        #     self.tcpwq.put(data)
+        # elif isinstance(data, Dwrap):
+        #     self.tcpwq.put(data.get_packet())
+        # else:
+        #     Log.warning("Data type error, need bytes or Dwrap.")
 
     def _send_heartbeat(self):
         while self.send_heartbeat_flag:
             if not self.is_connect() or not self.is_authenticated():
                 time.sleep(10); continue
 
-            frame = Dwrap(HbFrame.TYPE, app.id, app.ip, app.port,
-                          HbFrame().get_packet())
-            Log.info("Send heartbeat frame: %s" % str(frame))
-            self.send(frame)
+            # frame = Dwrap(HbFrame.TYPE, app.id, app.ip, app.port,
+            #               HbFrame().get_packet())
+            Log.info("Send heartbeat frame.")
+            self.send(HbFrame())
             time.sleep(10)
 
     def start_heartbeat_thread(self):
@@ -169,14 +202,13 @@ class App(Thread):
             self.hb_thread.start()
 
     def authenticate(self):
-        pkt = Dwrap(LgiFrame.TYPE, self.id, self.ip, self.port,
-                    LgiFrame().get_packet())
-        Log.info("Send Authenticate frame: %s" % str(pkt))
-        self.send(pkt)
+        # pkt = Dwrap(LgiFrame.TYPE, self.id, self.ip, self.port,
+        #             LgiFrame().get_packet())
+        Log.info("Send Authenticate frame.")
+        self.send(LgiFrame())
         try:
-            item = self.tcprq.get(timeout=10)
+            pkt = self.tcprq.get(timeout=10)
             self.tcprq.task_done()
-            pkt = Dwrap().decode(item)
             if pkt is not None:
                 if pkt.type is LgiFrame.TYPE:
                     if (LgiFrame().verify(pkt.data)):
@@ -204,6 +236,7 @@ class App(Thread):
                 # print("TODO")
 
             if self.is_remote_offline():
+                # BUG  blocked ...
                 self.quit()
 
     def initialize(self):
