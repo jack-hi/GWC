@@ -287,9 +287,52 @@ class FcFrame(Packet):
 
 
 class WxFrame(Packet):
+    """
+    frame:
+    +--------+--------+--------+--------+--------+--------+
+    |  0xAD  | number |     sequence    |     length      |
+    +--------+--------+--------+--------+--------+--------+
+    |                      JSON (N byte)                  |
+    +--------+--------+--------+--------+--------+--------+
+    |  XOR   |  0xDA  |
+    +--------+--------+
+
+    length = len(number + sequence + JSON) = 5 + N
+    XOR = XOR(number + sequence + JSON)
+
+    """
     TYPE = 7
-    def __init__(self, data):
-        super().__init(data)
+    f_head = 0xAD
+    f_tail = 0xDA
+    def __init__(self, number, sequence, json):
+        super().__init()
+        self.number = number
+        self.sequence = sequence
+        self.length = 5 + len(json)
+        self.json = json
+        self.xor = WxFrame.XOR(number, sequence, self.length, json)
+
+    def XOR(*args):
+        ret = 0
+        for a in args:
+            if isinstance(a, int):
+                b =  a.to_bytes(2, byteorder='big')
+                ret ^= b[0] ^ b[1]
+            elif isinstance(a, (bytes, bytearray)):
+                for b in a:
+                    ret ^= b
+            else:
+                raise ValueError("Value type error.")
+        return ret
+
+    def _encode(self):
+        self.put(WxFrame.f_head)
+        self.put(self.number)
+        self.put(self.sequence)
+        self.put(self.length)
+        self.put(self.json)
+        self.put(self.xor)
+        self.put(WxFrame.f_tail)
 
 
 class Dwrap(Packet):
