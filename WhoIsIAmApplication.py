@@ -18,7 +18,7 @@ from bacpypes.app import BIPSimpleApplication
 from bacpypes.local.device import LocalDeviceObject
 
 # some debugging
-_debug = 1
+_debug = 0
 _log = ModuleLogger(globals())
 
 # counters

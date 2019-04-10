@@ -7,7 +7,7 @@ from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame, FcFrame, Packet
 from threading import Thread
 from networks import TcpHandler, UdpHandler
 from asyncore import loop as asyncore_loop
-from commons import debugging
+from commons import init_debug, debugging
 
 @debugging
 class App(Thread):
@@ -119,5 +119,6 @@ class App(Thread):
 
 
 if __name__ == '__main__':
+    init_debug("/tmp/fake.log")
     app = App(999, '10.98.1.178', 46060)
     app.initialize()

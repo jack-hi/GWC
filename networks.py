@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import socket
-from asyncore import dispatcher
-from segment import Dwrap, LgiFrame, HbFrame, BacFrame
 import queue
+from asyncore import dispatcher
 from commons import debugging
+from segment import Dwrap, LgiFrame, HbFrame, BacFrame
+
 
 
 @debugging
@@ -113,7 +114,7 @@ class UdpHandler(dispatcher):
         # else:
         #     self.recv_queue[addr] += data
         bac = BacFrame(data)
-        UdpHandler._info("Received BACnet/IP data: %s" % str(bac))
+        UdpHandler._info("Received BACnet/IP data: %s, addr: %s" % (str(bac), addr))
         pkt = Dwrap(BacFrame.TYPE, self.tcp_handler.id,
                     self.tcp_handler.ip, self.tcp_handler.port,
                     bac.get_packet()).get_packet()
