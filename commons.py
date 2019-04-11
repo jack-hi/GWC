@@ -4,7 +4,7 @@
 from logging import basicConfig, getLogger, root, FileHandler, Formatter
 
 
-def init_debug(logfile="log.log"):
+def init_log(logfile="log.log"):
     if len(root.handlers) is 0:
         basicConfig(level="DEBUG",
                     format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
@@ -19,7 +19,7 @@ def init_debug(logfile="log.log"):
         raise RuntimeError("init_debug() can only call once.")
 
 
-def debugging(obj):
+def addlog(obj):
     """Function for attaching a debugging logger to a class or function."""
     # create a logger for this object
     logger = getLogger(obj.__module__ + '.' + obj.__name__)
@@ -36,7 +36,7 @@ def debugging(obj):
     return obj
 
 
-@debugging
+@addlog
 class test():
     def __init__(self):
         #test._fatal("fatal")
@@ -48,6 +48,6 @@ class test():
 
 
 if __name__ == "__main__":
-    init_debug()
-    init_debug()
+    init_log()
+    init_log()
     test()
