@@ -300,6 +300,7 @@ class WxFrame(Packet):
     TYPE = 7
     f_head = 0xAD
     f_tail = 0xDA
+    
     def __init__(self, number, sequence, json):
         super().__init()
         self.number = number
@@ -384,42 +385,31 @@ class Dwrap(Packet):
 
     def _encode(self):
         self.put_data(Dwrap.IDENTITY)  # identity: 2
-        if self.data is not None:
-            self.length = 30 + len(self.data)
+        self.length = 30 + len(self.data)
         self.put_short(self.length)  # length: 2
         self.put(self.type)  # type: 1
         self.put_long(self.id)  # id: 4
         self.put_data(inet_aton(self.dip))  # ip: 4
         self.put_short(self.dport)  # port: 2
         self.put_data(bytes(17))  # reserved: 17
-        if self.data is not None:
-            self.put_data(self.data)  # data: n
+        self.put_data(self.data)  # data: n
         self.crc = Icrc16.CRC16(bytes(self.pdata[2:]))
         self.put(self.crc&0xFF)
         self.put((self.crc&0xFF00) >> 8)
 
     def _decode(self):
-        p = Packet(self)
-        if Dwrap.IDENTITY != p.get_data(2):
-            Dwrap._warning("Value Error, identity error.")
-            return None
-        crc = Icrc16.CRC16(bytes(p.pdata[:-2]))
+        p = Packet(self)  # identity
+        p.get_data(2)
         self.length = p.get_short()
-        if len(p.pdata) != self.length:
-            Dwrap._warning("Value Error, pakcet length error.")
-            return None
         self.type = p.get()
         self.id = p.get_long()
         self.dip = inet_ntoa(p.get_data(4))
         self.dport = p.get_short()
-        p.get_data(17)
+        p.get_data(17)  # reserved
         self.data = p.get_data(self.length-30)
         crcl = p.get()
         crch = p.get()
-        self.crc = crch<<8 | crcl
-        if crc != self.crc:
-            Dwrap._warning("Value Error, packet CRC error.")
-            return None
+        self.crc = ((crch & 0xff) << 8) | crcl
 
     def __str__(self):
         return "Dwarp {length=%d, type=%d, id=%d, ip=%s:%d, crc=0x%02X}" % \
