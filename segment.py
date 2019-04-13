@@ -9,11 +9,7 @@ from socket import inet_aton, inet_ntoa
 from time import localtime
 from mcrptos import AES128, MD5, Icrc16
 import time
-import logging
-
-
-Log = logging.getLogger("App0")
-
+from commons import addlog
 
 class Packet(object):
     def __init__(self, data = None, *args, **kwargs):
@@ -334,7 +330,7 @@ class WxFrame(Packet):
         self.put(self.xor)
         self.put(WxFrame.f_tail)
 
-
+@addlog
 class Dwrap(Packet):
     """
     " simple wrap
@@ -365,21 +361,19 @@ class Dwrap(Packet):
     """
     IDENTITY = bytes([0x55, 0xaa])
 
-
-    def __init__(self, type=None, id=None, dip=None, dport=None, data=None):
-        super().__init__()
-        self.length = 30
-        self.type = 0 if type is None else type
-        self.id = 0 if id is None else id
-        self.dip = "0.0.0.0" if dip is None else dip
-        self.dport = 0 if dport is None else dport
-        self.data = None
-        if data is not None:
-            if not isinstance(data, (bytes, bytearray)):
-                raise ValueError("value type error")
-            self.data = data
-        self.crc = 0
-        self._encode()
+    def __init__(self, type=None, id=None, dip=None, dport=None, data=None, pkt=None):
+        super().__init__(data=pkt)
+        if pkt is not None:
+            self._decode()
+        else:
+            self.length = 30
+            self.type = 0 if type is None else type
+            self.id = 0 if id is None else id
+            self.dip = "0.0.0.0" if dip is None else dip
+            self.dport = 0 if dport is None else dport
+            self.data = b'' if data is None else data
+            self.crc = 0
+            self._encode()
 
     def update(self, **kargs):
         for arg in kargs.keys():
@@ -404,18 +398,15 @@ class Dwrap(Packet):
         self.put(self.crc&0xFF)
         self.put((self.crc&0xFF00) >> 8)
 
-    def decode(self, data):
-        if not isinstance(data, (bytes, bytearray)):
-            Log.warning("Value Error, data must be byte-like array.")
-            return None
-        p = Packet(data)
+    def _decode(self):
+        p = Packet(self)
         if Dwrap.IDENTITY != p.get_data(2):
-            Log.warning("Value Error, identity error.")
+            Dwrap._warning("Value Error, identity error.")
             return None
         crc = Icrc16.CRC16(bytes(p.pdata[:-2]))
         self.length = p.get_short()
         if len(p.pdata) != self.length:
-            Log.warning("Value Error, pakcet length error.")
+            Dwrap._warning("Value Error, pakcet length error.")
             return None
         self.type = p.get()
         self.id = p.get_long()
@@ -427,9 +418,8 @@ class Dwrap(Packet):
         crch = p.get()
         self.crc = crch<<8 | crcl
         if crc != self.crc:
-            Log.warning("Value Error, packet CRC error.")
+            Dwrap._warning("Value Error, packet CRC error.")
             return None
-        return self
 
     def __str__(self):
         return "Dwarp {length=%d, type=%d, id=%d, ip=%s:%d, crc=0x%02X}" % \
@@ -450,4 +440,9 @@ if __name__ == '__main__':
     sr = Dwrap()
     sr.update(type=1, id=101, dip='10.98.1.178', dport=7894, data=h3.get_packet())
     print(sr)
+
+    pkt = sr.get_packet()
+
+    nd = Dwrap(pkt=pkt)
+    print(nd)
 
