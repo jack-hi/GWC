@@ -9,6 +9,7 @@ from socket import inet_aton, inet_ntoa
 from time import localtime
 from mcrptos import AES128, MD5, Icrc16
 from json import loads, dumps
+from commons import addlog
 
 
 class Packet(object):
@@ -312,6 +313,7 @@ class WxFrame(Packet):
     TYPE = 7
     f_head = 0xAD
     f_tail = 0xDA
+    
     def __init__(self, number=0, sequence=0, json=b' '):
         super().__init__()
         self.number = number
@@ -361,6 +363,7 @@ class WxFrame(Packet):
         return "WxFrame {number=%d, sequence=%d, length=%d, json=%s, xor=%d}" \
                % (self.number, self.sequence, self.length, self.json.decode(), self.xor)
 
+@addlog
 class Dwrap(Packet):
     """
     " simple wrap
@@ -391,21 +394,19 @@ class Dwrap(Packet):
     """
     IDENTITY = bytes([0x55, 0xaa])
 
-
-    def __init__(self, type=None, id=None, dip=None, dport=None, data=None):
-        super().__init__()
-        self.length = 30
-        self.type = 0 if type is None else type
-        self.id = 0 if id is None else id
-        self.dip = "0.0.0.0" if dip is None else dip
-        self.dport = 0 if dport is None else dport
-        self.data = None
-        if data is not None:
-            if not isinstance(data, (bytes, bytearray)):
-                raise ValueError("value type error")
-            self.data = data
-        self.crc = 0
-        self._encode()
+    def __init__(self, type=None, id=None, dip=None, dport=None, data=None, pkt=None):
+        super().__init__(data=pkt)
+        if pkt is not None:
+            self._decode()
+        else:
+            self.length = 30
+            self.type = 0 if type is None else type
+            self.id = 0 if id is None else id
+            self.dip = "0.0.0.0" if dip is None else dip
+            self.dport = 0 if dport is None else dport
+            self.data = b'' if data is None else data
+            self.crc = 0
+            self._encode()
 
     def update(self, **kargs):
         for arg in kargs.keys():
@@ -416,46 +417,31 @@ class Dwrap(Packet):
 
     def _encode(self):
         self.put_data(Dwrap.IDENTITY)  # identity: 2
-        if self.data is not None:
-            self.length = 30 + len(self.data)
+        self.length = 30 + len(self.data)
         self.put_short(self.length)  # length: 2
         self.put(self.type)  # type: 1
         self.put_long(self.id)  # id: 4
         self.put_data(inet_aton(self.dip))  # ip: 4
         self.put_short(self.dport)  # port: 2
         self.put_data(bytes(17))  # reserved: 17
-        if self.data is not None:
-            self.put_data(self.data)  # data: n
+        self.put_data(self.data)  # data: n
         self.crc = Icrc16.CRC16(bytes(self.pdata[2:]))
         self.put(self.crc&0xFF)
         self.put((self.crc&0xFF00) >> 8)
 
-    def decode(self, data):
-        if not isinstance(data, (bytes, bytearray)):
-            Log.warning("Value Error, data must be byte-like array.")
-            return None
-        p = Packet(data)
-        if Dwrap.IDENTITY != p.get_data(2):
-            Log.warning("Value Error, identity error.")
-            return None
-        crc = Icrc16.CRC16(bytes(p.pdata[:-2]))
+    def _decode(self):
+        p = Packet(self)  # identity
+        p.get_data(2)
         self.length = p.get_short()
-        if len(p.pdata) != self.length:
-            Log.warning("Value Error, pakcet length error.")
-            return None
         self.type = p.get()
         self.id = p.get_long()
         self.dip = inet_ntoa(p.get_data(4))
         self.dport = p.get_short()
-        p.get_data(17)
+        p.get_data(17)  # reserved
         self.data = p.get_data(self.length-30)
         crcl = p.get()
         crch = p.get()
-        self.crc = crch<<8 | crcl
-        if crc != self.crc:
-            Log.warning("Value Error, packet CRC error.")
-            return None
-        return self
+        self.crc = ((crch & 0xff) << 8) | crcl
 
     def __str__(self):
         return "Dwarp {length=%d, type=%d, id=%d, ip=%s:%d, crc=0x%02X}" % \
@@ -476,4 +462,9 @@ if __name__ == '__main__':
     sr = Dwrap()
     sr.update(type=1, id=101, dip='10.98.1.178', dport=7894, data=h3.get_packet())
     print(sr)
+
+    pkt = sr.get_packet()
+
+    nd = Dwrap(pkt=pkt)
+    print(nd)
 
