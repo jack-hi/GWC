@@ -1,18 +1,14 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-
+from time import strftime
 from copy import copy as _copy
 from struct import pack, unpack
 from binascii import hexlify
 from socket import inet_aton, inet_ntoa
 from time import localtime
 from mcrptos import AES128, MD5, Icrc16
-import time
-import logging
-
-
-Log = logging.getLogger("App0")
+from json import loads, dumps
 
 
 class Packet(object):
@@ -172,13 +168,10 @@ class LgiFrame(Packet):
 
     def verify(self, data):
         if not isinstance(data, (bytes, bytearray)):
-            #raise TypeError("data must be a byte-like array.")
-            Log.warning("Type Error, data must be a byte-like array.")
-            return False
+            raise TypeError("data must be a byte-like array.")
         if len(data) is not 16*2:
-            #raise ValueError("data length error.")
-            Log.warning("Type Error, data length error.")
-            return False
+            raise ValueError("data length error.")
+
         crypto = MD5().digest(AES128(self.key).encrypt(bytes(data[:16]))[:16])
         return crypto == data[16:]
 
@@ -286,6 +279,21 @@ class FcFrame(Packet):
         return tmp
 
 
+dict2json = lambda x: dumps(x)
+json2dict = lambda x: loads(x)
+
+json_tpl = {
+    # "handshake": {"key": "0123456789012345"}
+    # "heartbeat": {"ConnectTime": strftime("%Y-%m-%d %H:%M:%S")}
+    "ACK": {"ErrMsg": "",
+            "IsSuccess":True,
+            "OperationTime": strftime("%Y-%m-%d %H:%M:%S"),
+            "Remark":"",
+            "ReplyCommand":1,
+            "Wx_FlcNum":120,
+            "Wx_buildNum":"F1021"}
+}
+
 class WxFrame(Packet):
     """
     frame:
@@ -304,13 +312,14 @@ class WxFrame(Packet):
     TYPE = 7
     f_head = 0xAD
     f_tail = 0xDA
-    def __init__(self, number, sequence, json):
-        super().__init()
+    def __init__(self, number=0, sequence=0, json=b' '):
+        super().__init__()
         self.number = number
         self.sequence = sequence
         self.length = 5 + len(json)
         self.json = json
         self.xor = WxFrame.XOR(number, sequence, self.length, json)
+        self._encode()
 
     def XOR(*args):
         ret = 0
@@ -334,6 +343,23 @@ class WxFrame(Packet):
         self.put(self.xor)
         self.put(WxFrame.f_tail)
 
+    def decode(self, data):
+        if isinstance(data, (bytes, bytearray)):
+            p = Packet(data)
+            p.get() # 0xAD
+            self.number = p.get()
+            self.sequence = p.get_short()
+            self.length = p.get_short()
+            self.json = p.get_data(self.length - 5)
+            self.xor = p.get()
+            p.get() # 0xDA
+        else:
+            raise ValueError("data value type error.")
+        return self
+
+    def __str__(self):
+        return "WxFrame {number=%d, sequence=%d, length=%d, json=%s, xor=%d}" \
+               % (self.number, self.sequence, self.length, self.json.decode(), self.xor)
 
 class Dwrap(Packet):
     """
