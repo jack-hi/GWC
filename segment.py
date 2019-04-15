@@ -292,7 +292,13 @@ json_tpl = {
             "Remark":"",
             "ReplyCommand":1,
             "Wx_FlcNum":120,
-            "Wx_buildNum":"F1021"}
+            "Wx_buildNum":"F1021"},
+
+    "ODR": {"Wx_DoorName":"2",
+              "Wx_DrNumInFlc":12,
+              "Wx_DrShowFlr":"11F",
+              "Wx_buildNum":"F0000000 ",
+              "Wx_FlcNum":111}
 }
 
 class WxFrame(Packet):

@@ -5,6 +5,8 @@ import socket
 from asyncore import dispatcher, loop as asyncore_loop
 from segment import WxFrame, json2dict, dict2json, json_tpl
 from commons import addlog, init_log
+from threading import Thread
+from time import sleep
 
 
 @addlog
@@ -71,13 +73,47 @@ class Wservice(dispatcher):
 
         frame = WxFrame(pkt=data)
         rjs = frame.json.decode(encoding="utf-8")
-        Wservice._info("INST: " + rjs)
         rj = json2dict(rjs)
+        if frame.number is 0x01:  # hs
+            Wservice._info("Received HS: " + rjs)
+            self._generate_ack(frame, rj)
+            # start sending mock insts.
+            Thread(target=mock_inst, args=[self], daemon=True).start()
+        elif frame.number is 0x02:  # hb
+            Wservice._info("Received HB: " + rjs)
+            self._generate_ack(frame, rj)
+        elif frame.number is 0xff:  # ack
+            Wservice._info("Received ACK: " + rjs)
+        else:
+            Wservice._info("Unknow inst: " + rjs)
+
+    def _generate_ack(self, frame, rj, is_success=True, err_msg=""):
         ack = json_tpl['ACK']
+
         for key in ack.keys():
             ack[key] = rj.get(key) if rj.get(key) is not None else ack[key]
+
+        ack["IsSuccess"] = is_success
+        ack["ErrMsg"] = err_msg
+
         Wservice._info("ACK: " + dict2json(ack))
-        self.frms.append(WxFrame(255, frame.sequence, dict2json(ack).encode()))
+        self.frms.append(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
+
+@addlog
+def mock_inst(*args, **kwargs):
+    seq = 0
+    while True:
+        ws = args[0]
+        sj = json_tpl["ODR"]
+        sj["Wx_buildNum"] = "F0001231"
+        sj["Wx_FlcNum"] = 101
+        frame = WxFrame(0x04, seq, dict2json(sj).encode())
+        ws.frms.append(frame)
+        mock_inst._info("Send inst: " + str(frame) +
+                        ", json: " + dict2json(sj))
+        seq += 1
+        sleep(30)
+
 
 if __name__ == "__main__":
     init_log('/tmp/wx.log')
