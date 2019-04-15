@@ -24,7 +24,7 @@ class Packet(object):
         else:
             raise TypeError("bytes or bytearray needed.")
 
-    def get_packet(self):
+    def get_all(self):
         return self.pdata
 
     def get(self):
@@ -314,14 +314,17 @@ class WxFrame(Packet):
     f_head = 0xAD
     f_tail = 0xDA
     
-    def __init__(self, number=0, sequence=0, json=b' '):
-        super().__init__()
-        self.number = number
-        self.sequence = sequence
-        self.length = 5 + len(json)
-        self.json = json
-        self.xor = WxFrame.XOR(number, sequence, self.length, json)
-        self._encode()
+    def __init__(self, number=0, sequence=0, json=b' ', pkt=None):
+        super().__init__(data=pkt)
+        if pkt is not None:
+            self._decode()
+        else:
+            self.number = number
+            self.sequence = sequence
+            self.length = 5 + len(json)
+            self.json = json
+            self.xor = WxFrame.XOR(number, sequence, self.length, json)
+            self._encode()
 
     def XOR(*args):
         ret = 0
@@ -339,25 +342,22 @@ class WxFrame(Packet):
     def _encode(self):
         self.put(WxFrame.f_head)
         self.put(self.number)
-        self.put(self.sequence)
-        self.put(self.length)
-        self.put(self.json)
+        self.put_short(self.sequence)
+        self.put_short(self.length)
+        self.put_data(self.json)
         self.put(self.xor)
         self.put(WxFrame.f_tail)
 
-    def decode(self, data):
-        if isinstance(data, (bytes, bytearray)):
-            p = Packet(data)
-            p.get() # 0xAD
-            self.number = p.get()
-            self.sequence = p.get_short()
-            self.length = p.get_short()
-            self.json = p.get_data(self.length - 5)
-            self.xor = p.get()
-            p.get() # 0xDA
-        else:
-            raise ValueError("data value type error.")
-        return self
+    def _decode(self):
+        p = Packet(self)
+        p.get() # 0xAD
+        self.number = p.get()
+        self.sequence = p.get_short()
+        self.length = p.get_short()
+        self.json = p.get_data(self.length - 5)
+        self.xor = p.get()
+        p.get() # 0xDA
+
 
     def __str__(self):
         return "WxFrame {number=%d, sequence=%d, length=%d, json=%s, xor=%d}" \
@@ -394,16 +394,16 @@ class Dwrap(Packet):
     """
     IDENTITY = bytes([0x55, 0xaa])
 
-    def __init__(self, type=None, id=None, dip=None, dport=None, data=None, pkt=None):
+    def __init__(self, type=0, id=0, dip=None, dport=0, data=None, pkt=None):
         super().__init__(data=pkt)
         if pkt is not None:
             self._decode()
         else:
             self.length = 30
-            self.type = 0 if type is None else type
-            self.id = 0 if id is None else id
+            self.type = type
+            self.id = id
             self.dip = "0.0.0.0" if dip is None else dip
-            self.dport = 0 if dport is None else dport
+            self.dport = dport
             self.data = b'' if data is None else data
             self.crc = 0
             self._encode()
@@ -412,7 +412,7 @@ class Dwrap(Packet):
         for arg in kargs.keys():
             if arg in ("type", "id", "dip", "dport", "data"):
                 self.__setattr__(arg, kargs.get(arg))
-        self.get_packet().clear()
+        self.get_all().clear()
         self._encode()
 
     def _encode(self):
@@ -451,7 +451,7 @@ class Dwrap(Packet):
 if __name__ == '__main__':
 
     l = LgiFrame()
-    t1 = l.get_packet()
+    t1 = l.get_all()
     print(t1)
     if l.verify(t1):
         print("OK")
@@ -460,10 +460,10 @@ if __name__ == '__main__':
     print(h3)
 
     sr = Dwrap()
-    sr.update(type=1, id=101, dip='10.98.1.178', dport=7894, data=h3.get_packet())
+    sr.update(type=1, id=101, dip='10.98.1.178', dport=7894, data=h3.get_all())
     print(sr)
 
-    pkt = sr.get_packet()
+    pkt = sr.get_all()
 
     nd = Dwrap(pkt=pkt)
     print(nd)

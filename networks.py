@@ -85,7 +85,7 @@ class TcpHandler(dispatcher):
             try:
                 pkt = self.wq.get_nowait()
                 self.wq.task_done()
-                self.send_buf += pkt.get_packet()
+                self.send_buf += pkt.get_all()
             except queue.Empty:
                 return
         if len(self.send_buf):
@@ -117,7 +117,7 @@ class UdpHandler(dispatcher):
         UdpHandler._info("Received BACnet/IP data: %s, addr: %s" % (str(bac), addr))
         pkt = Dwrap(BacFrame.TYPE, self.tcp_handler.id,
                     self.tcp_handler.ip, self.tcp_handler.port,
-                    bac.get_packet()).get_packet()
+                    bac.get_all()).get_all()
         self.tcp_handler.send_buf += pkt
 
     def handle_write(self):

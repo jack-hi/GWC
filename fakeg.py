@@ -13,7 +13,7 @@ local_ip = '10.98.1.218'
 udp_port = 0xBAC1
 udp_ifc = ("", 0xBAC0)
 udp_msg = list()  # item: (bytes,('xx.xx.xx.xx', port))
-frm_buf = list()  # item: (('xx.xx.xx.xx', port), Frame)
+frm_buf = list()  # item: ('xx.xx.xx.xx', port, Frame)
 running = True
 
 @addlog
@@ -55,10 +55,10 @@ class TcpHandler(dispatcher):
 
     def _encode(self):
         if len(frm_buf) is not 0:
-            (ip, port), frame = frm_buf.pop(0)
-            pkt = Dwrap(frame.TYPE, self.id, ip, port, frame.get_packet())
+            ip, port, frame = frm_buf.pop(0)
+            pkt = Dwrap(frame.TYPE, self.id, ip, port, frame.get_all())
             TcpHandler._info("Encode frame: " + str(pkt))
-            return pkt.get_packet()
+            return pkt.get_all()
         else:
             return b''
 
@@ -79,7 +79,7 @@ class TcpHandler(dispatcher):
                 self._send_hbframe()
             else:
                 if not self.auth_send_flag:
-                    frm_buf.append(((local_ip,0), LgiFrame()))
+                    frm_buf.append((local_ip,0, LgiFrame()))
                     self.auth_send_flag = True
             self.sbuf += self._encode()
 
@@ -92,7 +92,7 @@ class TcpHandler(dispatcher):
         if pkt is None:
             return
 
-        d = Dwrap().decode(pkt)
+        d = Dwrap(pkt=pkt)
         if self.authenticated:
             if d.type == HbFrame.TYPE:
                 TcpHandler._info("Received HbFrame:" + str(d))
@@ -116,15 +116,15 @@ class TcpHandler(dispatcher):
         if self.authenticated:
             cur = time()
             if cur - self.hb_tsmp > 10.0:
-                frm_buf.append(((local_ip, 0), HbFrame()))
+                frm_buf.append((local_ip, 0, HbFrame()))
                 self.hb_tsmp = cur
 
     def _deal_wxframe(self, data):
-        frame = WxFrame().decode(data)
+        frame = WxFrame(pkt=data)
         TcpHandler._info(str(frame))
         ack = dict2json(json_tpl["ACK"]).encode(encoding='utf-8')
         afrm = WxFrame(255, frame.sequence, ack)
-        frm_buf.append(((local_ip,0), afrm))
+        frm_buf.append((local_ip, 0, afrm))
 
 
 @addlog
@@ -141,7 +141,7 @@ class UdpHandler(dispatcher):
         UdpHandler._info("Received from %s: %s" % (addr, data.hex()))
         if data[0] == 0x81:
             frame = BacFrame(data)
-            frm_buf.append((addr, frame))
+            frm_buf.append((*addr, frame))
 
     def handle_write(self):
         if len(self.smsg) is 0:
