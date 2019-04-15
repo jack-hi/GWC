@@ -3,7 +3,7 @@
 
 import socket
 from asyncore import dispatcher, loop as asyncore_loop
-from segment import WxFrame, json2dict, dict2json
+from segment import WxFrame, json2dict, dict2json, json_tpl
 from commons import addlog, init_log
 
 
@@ -24,25 +24,60 @@ class WxServer(dispatcher):
 
 @addlog
 class Wservice(dispatcher):
+    ending = bytes([0xFB, 0xFC, 0xFD, 0xFE, 0xFF])
     def __init__(self, sock):
         super().__init__(sock=sock)
+        self.frms = list() # frames waiting for send.
         self.sbuf = bytearray()
         self.rbuf = bytearray()
 
     def handle_write(self):
         if len(self.sbuf) is 0:
-            return
-        else:
-            ret = self.send(self.sbuf)
-            del self.sbuf[:ret]
+            if len(self.frms) is 0:
+                return
+            self.sbuf += self._encode(self.frms.pop(0))
+        ret = self.send(self.sbuf)
+        del self.sbuf[:ret]
 
     def handle_read(self):
-        ret = self.recv(1024)
-        if len(ret) is 0:
+        buf = self.recv(1024)
+        if len(buf) is 0:
             Wservice._warning("Client connection closed.")
             return
-        Wservice._info("Received: %s" % ret.decode())
+        Wservice._info("Received: %s" % str(buf.hex()))
+        self.rbuf += buf
+        self._service(self._decode())
 
+    def _encode(self, frame):
+         return frame.get_all() + Wservice.ending
+
+    def _decode(self):
+        if len(self.rbuf) < 5:
+            return b''
+
+        index = 0
+        while len(self.rbuf[index:]) >= 5:
+            if self.rbuf[index:index+5] != Wservice.ending:
+                index += 1
+            else:
+                ret = self.rbuf[:index]
+                del self.rbuf[:index+5]
+                return ret
+        return b''
+
+    def _service(self, data):
+        if len(data) is 0:
+            return
+
+        frame = WxFrame(pkt=data)
+        rjs = frame.json.decode(encoding="utf-8")
+        Wservice._info("INST: " + rjs)
+        rj = json2dict(rjs)
+        ack = json_tpl['ACK']
+        for key in ack.keys():
+            ack[key] = rj.get(key) if rj.get(key) is not None else ack[key]
+        Wservice._info("ACK: " + dict2json(ack))
+        self.frms.append(WxFrame(255, frame.sequence, dict2json(ack).encode()))
 
 if __name__ == "__main__":
     init_log('/tmp/wx.log')
