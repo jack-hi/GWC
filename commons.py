@@ -7,13 +7,15 @@ from logging import basicConfig, getLogger, root, FileHandler, Formatter
 def init_log(logfile="log.log"):
     if len(root.handlers) is 0:
         basicConfig(level="DEBUG",
-                    format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S")
+                    format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s")
+                    # format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
+                    # datefmt="%Y-%m-%d %H:%M:%S")
 
         f_handler = FileHandler(logfile)
         f_handler.setFormatter(
-            Formatter(fmt="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
-                      datefmt="%Y-%m-%d %H:%M:%S"))
+            Formatter(fmt="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s"))
+            # Formatter(fmt="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
+            #           datefmt="%Y-%m-%d %H:%M:%S"))
         root.addHandler(f_handler)
     else:
         raise RuntimeError("init_debug() can only call once.")
