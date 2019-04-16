@@ -159,6 +159,7 @@ class UdpHandler(dispatcher):
             else:
                 self.smsg.pop(0)
 
+
 @addlog
 class FakeG(Thread):
     def __init__(self, id, ip, port):
@@ -170,7 +171,7 @@ class FakeG(Thread):
 
 if __name__ == '__main__':
     init_log('/tmp/fakeg.log')
-    FakeG(1213, "10.98.1.178", 46060).start()
+    FakeG(1231, "10.98.1.178", 46060).start()
     while running:
         sleep(1)
 

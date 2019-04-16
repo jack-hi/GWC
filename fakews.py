@@ -40,7 +40,8 @@ class Wservice(dispatcher):
 
     def _get_frame(self):
         with self.frms_lock:
-            return self.frms.pop(0) if len(self.frms) > 0 else None
+            frame = self.frms.pop(0) if len(self.frms) > 0 else None
+        return frame
 
     def handle_write(self):
         if len(self.sbuf) is 0:
@@ -86,7 +87,10 @@ class Wservice(dispatcher):
             Wservice._info("Received HS: " + rjs)
             self._generate_ack(frame, rj)
             # start sending mock insts.
-            Thread(target=mock_inst, args=[self], daemon=True).start()
+            global mock_thread
+            if mock_thread is None:
+                mock_thread = Thread(target=mock_inst, args=[self], daemon=True)
+                mock_thread.start()
         elif frame.number is 0x02:  # hb
             Wservice._info("Received HB: " + rjs)
             self._generate_ack(frame, rj)
@@ -106,6 +110,9 @@ class Wservice(dispatcher):
 
         Wservice._info("ACK: " + dict2json(ack))
         self.send_frame(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
+
+
+mock_thread  = None 
 
 @addlog
 def mock_inst(*args, **kwargs):
