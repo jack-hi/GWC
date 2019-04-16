@@ -5,7 +5,7 @@ import socket
 from asyncore import dispatcher, loop as asyncore_loop
 from segment import WxFrame, json2dict, dict2json, json_tpl
 from commons import addlog, init_log
-from threading import Thread
+from threading import Thread, Lock
 from time import sleep
 
 
@@ -30,16 +30,24 @@ class Wservice(dispatcher):
     def __init__(self, sock):
         super().__init__(sock=sock)
         self.frms = list() # frames waiting for send.
+        self.frms_lock = Lock()
         self.sbuf = bytearray()
         self.rbuf = bytearray()
 
+    def send_frame(self, frame):
+        with self.frms_lock:
+            self.frms.append(frame)
+
+    def _get_frame(self):
+        with self.frms_lock:
+            return self.frms.pop(0) if len(self.frms) > 0 else None
+
     def handle_write(self):
         if len(self.sbuf) is 0:
-            if len(self.frms) is 0:
-                return
-            self.sbuf += self._encode(self.frms.pop(0))
-        ret = self.send(self.sbuf)
-        del self.sbuf[:ret]
+            self.sbuf += self._encode(self._get_frame())
+        if len(self.sbuf) > 0:
+            ret = self.send(self.sbuf)
+            del self.sbuf[:ret]
 
     def handle_read(self):
         buf = self.recv(1024)
@@ -51,7 +59,7 @@ class Wservice(dispatcher):
         self._service(self._decode())
 
     def _encode(self, frame):
-         return frame.get_all() + Wservice.ending
+        return b'' if frame is None else (frame.get_all()+Wservice.ending)
 
     def _decode(self):
         if len(self.rbuf) < 5:
@@ -97,7 +105,7 @@ class Wservice(dispatcher):
         ack["ErrMsg"] = err_msg
 
         Wservice._info("ACK: " + dict2json(ack))
-        self.frms.append(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
+        self.send_frame(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
 
 @addlog
 def mock_inst(*args, **kwargs):
@@ -108,7 +116,7 @@ def mock_inst(*args, **kwargs):
         sj["Wx_buildNum"] = "F0001231"
         sj["Wx_FlcNum"] = 101
         frame = WxFrame(0x04, seq, dict2json(sj).encode())
-        ws.frms.append(frame)
+        ws.send_frame(frame)
         mock_inst._info("Send inst: " + str(frame) +
                         ", json: " + dict2json(sj))
         seq += 1
