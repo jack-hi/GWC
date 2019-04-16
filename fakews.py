@@ -3,7 +3,7 @@
 
 import socket
 from asyncore import dispatcher, loop as asyncore_loop
-from segment import WxFrame, json2dict, dict2json, json_tpl
+from segment import WxFrame, json2dict, dict2json, json_tpl, json_idx
 from commons import addlog, init_log
 from threading import Thread, Lock
 from time import sleep
@@ -54,6 +54,8 @@ class Wservice(dispatcher):
         buf = self.recv(1024)
         if len(buf) is 0:
             Wservice._warning("Client connection closed.")
+            global mock_thread_running
+            mock_thread_running = False
             return
         Wservice._info("Received: %s" % str(buf.hex()))
         self.rbuf += buf
@@ -87,9 +89,10 @@ class Wservice(dispatcher):
             Wservice._info("Received HS: " + rjs)
             self._generate_ack(frame, rj)
             # start sending mock insts.
-            global mock_thread
+            global mock_thread, mock_thread_running
             if mock_thread is None:
                 mock_thread = Thread(target=mock_inst, args=[self], daemon=True)
+                mock_thread_running = True
                 mock_thread.start()
         elif frame.number is 0x02:  # hb
             Wservice._info("Received HB: " + rjs)
@@ -108,26 +111,29 @@ class Wservice(dispatcher):
         ack["IsSuccess"] = is_success
         ack["ErrMsg"] = err_msg
 
-        Wservice._info("ACK: " + dict2json(ack))
+        Wservice._info("Reply ACK: " + dict2json(ack))
         self.send_frame(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
 
 
-mock_thread  = None 
-
+mock_thread  = None
+mock_thread_running = False
 @addlog
 def mock_inst(*args, **kwargs):
+    ws = args[0]
     seq = 0
-    while True:
-        ws = args[0]
-        sj = json_tpl["ODR"]
-        sj["Wx_buildNum"] = "F0001231"
-        sj["Wx_FlcNum"] = 101
-        frame = WxFrame(0x04, seq, dict2json(sj).encode())
-        ws.send_frame(frame)
-        mock_inst._info("Send inst: " + str(frame) +
-                        ", json: " + dict2json(sj))
-        seq += 1
-        sleep(30)
+    insts = ("ODR", "OER", "CVC", "ESR")
+    while mock_thread_running:
+        for key in insts:
+            sj = json_tpl[key]
+            # sj["Wx_buildNum"] = "F0001231"
+            sj["Wx_buildNum"] = "F0000101"
+            sj["Wx_FlcNum"] = 101
+            frame = WxFrame(json_idx[key], seq, dict2json(sj).encode())
+            ws.send_frame(frame)
+            mock_inst._info("Send inst: " + str(frame) +
+                            ", json: " + dict2json(sj))
+            seq = 0 if seq ^ 0xFFFF is 0 else seq + 1
+            sleep(30)
 
 
 if __name__ == "__main__":

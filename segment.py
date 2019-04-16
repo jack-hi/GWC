@@ -283,6 +283,13 @@ class FcFrame(Packet):
 dict2json = lambda x: dumps(x)
 json2dict = lambda x: loads(x)
 
+json_idx = {
+    "ACK": 0xff,
+    "ODR": 0x04,
+    "OER": 0x05,
+    "CVC": 0x08,
+    "ESR": 0x09,
+}
 json_tpl = {
     # "handshake": {"key": "0123456789012345"}
     # "heartbeat": {"ConnectTime": strftime("%Y-%m-%d %H:%M:%S")}
@@ -295,10 +302,28 @@ json_tpl = {
             "Wx_buildNum":"F1021"},
 
     "ODR": {"Wx_DoorName":"2",
-              "Wx_DrNumInFlc":12,
-              "Wx_DrShowFlr":"11F",
-              "Wx_buildNum":"F0000000 ",
-              "Wx_FlcNum":111}
+            "Wx_DrNumInFlc":12,
+            "Wx_DrShowFlr":"11F",
+            "Wx_buildNum":"F0000000 ",
+            "Wx_FlcNum":111},
+
+    "OER": {"Wx_EleNum":2,
+            "WX_Ele_PhysicFlr":12,
+            "Wx_EleShowFlr":"11F",
+            "Wx_buildNum":"F01231 ",
+            "Wx_FlcNum":101},
+
+    "CVC": {"Wx_EleNum":2,
+            "WX_Ele_PhysicFlr":12,
+            "Wx_EleShowFlr":"11F",
+            "Wx_buildNum":"F01231 ",
+            "Wx_FlcNum":101 ,
+            "WX_Ele_PhysicFlr_dest":11,
+            "Wx_EleShowFlr_dest":"10F"},
+
+    "ESR": {"Wx_buildNum":"F01231 ",
+            "Wx_FlcNum":101}
+
 }
 
 class WxFrame(Packet):
