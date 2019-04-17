@@ -64,14 +64,16 @@ class TcpHandler(dispatcher):
 
     def handle_read(self):
         buf = self.recv(1024)
-        if len(buf) is 0:
-            TcpHandler._error("Disconnect from Server.")
-            global running
-            running = False
-            return
-
+        if len(buf) is 0: return
         self.rbuf += buf
         self._fakeg_func(self._decode())
+
+    def handle_close(self):
+        TcpHandler._error("Disconnect from Server.")
+        global running
+        running = False
+
+        self.close()
 
     def handle_write(self):
         if len(self.sbuf) is 0:

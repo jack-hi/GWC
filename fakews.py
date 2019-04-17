@@ -52,14 +52,17 @@ class Wservice(dispatcher):
 
     def handle_read(self):
         buf = self.recv(1024)
-        if len(buf) is 0:
-            Wservice._warning("Client connection closed.")
-            global mock_thread_running
-            mock_thread_running = False
-            return
+        if len(buf) is 0: return
         Wservice._info("Received: %s" % str(buf.hex()))
         self.rbuf += buf
         self._service(self._decode())
+
+    def handle_close(self):
+        Wservice._warning("Client connection closed.")
+        global mock_thread_running
+        mock_thread_running = False
+
+        self.close()
 
     def _encode(self, frame):
         return b'' if frame is None else (frame.get_all()+Wservice.ending)
@@ -124,6 +127,7 @@ def mock_inst(*args, **kwargs):
     insts = ("ODR", "OER", "CVC", "ESR")
     while mock_thread_running:
         for key in insts:
+            if not mock_thread_running: break
             sj = json_tpl[key]
             # sj["Wx_buildNum"] = "F0001231"
             sj["Wx_buildNum"] = "F0000101"
