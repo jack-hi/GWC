@@ -40,5 +40,8 @@ class LocalMessageClient(dispatcher):
 if __name__ == '__main__':
     LocalMessageServer('/tmp/af-unix')
     LocalMessageClient('/tmp/af-unix')
-    asyncore_loop()
+    try:
+        asyncore_loop()
+    except KeyboardInterrupt:
+        print("Quit.")
 

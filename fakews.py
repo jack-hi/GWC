@@ -143,4 +143,7 @@ def mock_inst(*args, **kwargs):
 if __name__ == "__main__":
     init_log('/tmp/wx.log')
     WxServer("", 12345)
-    asyncore_loop()
+    try:
+        asyncore_loop()
+    except KeyboardInterrupt:
+        print('Quit.')

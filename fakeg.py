@@ -173,7 +173,10 @@ class FakeG(Thread):
 
 if __name__ == '__main__':
     init_log('/tmp/fakeg.log')
-    FakeG(1231, "10.98.1.178", 46060).start()
-    while running:
-        sleep(1)
+    try:
+        FakeG(1231, "10.98.1.178", 46060).start()
+        while running:
+            sleep(1)
+    except KeyboardInterrupt:
+        print('Quit.')
 
