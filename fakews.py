@@ -59,8 +59,9 @@ class Wservice(dispatcher):
 
     def handle_close(self):
         Wservice._warning("Client connection closed.")
-        global mock_thread_running
+        global mock_thread_running, mock_thread
         mock_thread_running = False
+        mock_thread = None
 
         self.close()
 

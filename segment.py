@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-from time import strftime
 from copy import copy as _copy
 from struct import pack, unpack
 from binascii import hexlify
 from socket import inet_aton, inet_ntoa
-from time import localtime
+from time import localtime, strftime, time
 from mcrptos import AES128, MD5, Icrc16
 from json import loads, dumps
 from commons import addlog
@@ -290,12 +289,14 @@ json_idx = {
     "CVC": 0x08,
     "ESR": 0x09,
 }
+
+cts = lambda t: strftime("%Y-%m-%d %H:%M:%S.", localtime(t)) + "%03d" % ((t-int(t))*1000)
 json_tpl = {
     # "handshake": {"key": "0123456789012345"}
     # "heartbeat": {"ConnectTime": strftime("%Y-%m-%d %H:%M:%S")}
     "ACK": {"ErrMsg": "",
             "IsSuccess":True,
-            "OperationTime": strftime("%Y-%m-%d %H:%M:%S"),
+            "OperationTime": cts(time()),
             "Remark":"",
             "ReplyCommand":1,
             "Wx_FlcNum":120,
@@ -499,3 +500,5 @@ if __name__ == '__main__':
     nd = Dwrap(pkt=pkt)
     print(nd)
 
+    # cts test
+    print(cts(time()))
