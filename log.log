@@ -1,0 +1,22 @@
+2019-04-19 16:44:00,711 __main__.test,line:46 [CRITICAL] fatal
+2019-04-19 16:44:00,712 __main__.test,line:47 [ERROR] exception
+NoneType: None
+2019-04-19 16:44:00,712 __main__.test,line:48 [ERROR] error
+2019-04-19 16:44:00,713 __main__.test,line:49 [WARNING] warning
+2019-04-19 16:44:00,714 __main__.test,line:50 [INFO] test
+2019-04-19 16:44:00,715 __main__.test,line:51 [DEBUG] debug
+2019-04-19 16:46:22,027 __main__.test,line:46 [CRITICAL] fatal
+2019-04-19 16:46:22,027 __main__.test,line:47 [ERROR] exception
+NoneType: None
+2019-04-19 16:46:22,028 __main__.test,line:48 [ERROR] error
+2019-04-19 16:46:22,029 __main__.test,line:49 [WARNING] warning
+2019-04-19 16:46:22,029 __main__.test,line:50 [INFO] test
+2019-04-19 16:46:22,030 __main__.test,line:51 [DEBUG] debug
+2019-04-19 16:52:47,913 __main__.test,line:46 [CRITICAL] fatal
+2019-04-19 16:52:47,914 __main__.test,line:47 [ERROR] exception
+NoneType: None
+2019-04-19 16:52:47,940 __main__.test,line:48 [ERROR] error
+2019-04-19 16:52:47,941 __main__.test,line:49 [WARNING] warning
+2019-04-19 16:52:47,941 __main__.test,line:50 [INFO] test
+2019-04-19 16:52:47,942 __main__.test,line:51 [DEBUG] debug
+2019-04-19 16:52:47,942 __main__.func,line:55 [INFO] info

@@ -43,15 +43,21 @@ def addlog(obj):
 @addlog
 class test():
     def __init__(self):
-        test.fatal("fatal")
-        test.exception("exception")
-        test.error("error")
-        test.warn("warning")
-        test.info("test")
-        test.debug("debug")
+        self.fatal("fatal")
+        self.exception("exception")
+        self.error("error")
+        self.warn("warning")
+        self.info("test")
+        self.debug("debug")
+
+@addlog
+def func():
+    func.info("info")
 
 
 if __name__ == "__main__":
     init_log(level='INFO')
     # init_log()
     test()
+
+    func()
