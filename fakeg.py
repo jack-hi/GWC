@@ -32,7 +32,7 @@ class TcpHandler(dispatcher):
         self.hb_tsmp = 0.0
 
     def handle_connect(self):
-        TcpHandler._info("Connected to Server.")
+        TcpHandler.info("Connected to Server.")
 
     def _decode(self):
         while len(self.rbuf) >= 4:
@@ -46,7 +46,7 @@ class TcpHandler(dispatcher):
 
         length = ((self.rbuf[2] & 0x00ff) << 8) | self.rbuf[3]
         if len(self.rbuf) >= 4 + length:
-            TcpHandler._debug("Decode a frame, length: 0x%X" % length)
+            TcpHandler.debug("Decode a frame, length: 0x%X" % length)
             pkt = self.rbuf[:4 + length]
             del self.rbuf[:4 + length]
             return pkt
@@ -57,7 +57,7 @@ class TcpHandler(dispatcher):
         if len(frm_buf) is not 0:
             ip, port, frame = frm_buf.pop(0)
             pkt = Dwrap(frame.TYPE, self.id, ip, port, frame.get_all())
-            TcpHandler._info("Encode frame: " + str(pkt))
+            TcpHandler.info("Encode frame: " + str(pkt))
             return pkt.get_all()
         else:
             return b''
@@ -69,7 +69,7 @@ class TcpHandler(dispatcher):
         self._fakeg_func(self._decode())
 
     def handle_close(self):
-        TcpHandler._error("Disconnect from Server.")
+        TcpHandler.error("Disconnect from Server.")
         global running
         running = False
 
@@ -87,7 +87,7 @@ class TcpHandler(dispatcher):
 
         if len(self.sbuf) is not 0:
             ret = self.send(self.sbuf)
-            TcpHandler._info("Send to Server: " + self.sbuf[:ret].hex())
+            TcpHandler.info("Send to Server: " + self.sbuf[:ret].hex())
             del self.sbuf[:ret]
 
     def _fakeg_func(self, pkt):
@@ -97,22 +97,22 @@ class TcpHandler(dispatcher):
         d = Dwrap(pkt=pkt)
         if self.authenticated:
             if d.type == HbFrame.TYPE:
-                TcpHandler._info("Received HbFrame:" + str(d))
+                TcpHandler.info("Received HbFrame:" + str(d))
             elif d.type == BacFrame.TYPE:
-                TcpHandler._info("Received BacFram: " + str(d))
+                TcpHandler.info("Received BacFram: " + str(d))
                 udp_msg.append((d.data, udp_ifc))
             elif d.type == WxFrame.TYPE:
-                TcpHandler._info("Received WxFram: " + str(d))
+                TcpHandler.info("Received WxFram: " + str(d))
                 self._deal_wxframe(d.data)
             else:
-                TcpHandler._warning("Receive Unkonw frame: " + str(d))
+                TcpHandler.warn("Receive Unkonw frame: " + str(d))
         else:
             if d.type == LgiFrame.TYPE:
-                TcpHandler._info("Recvice authentic frame: " + str(d))
+                TcpHandler.info("Recvice authentic frame: " + str(d))
                 self.authenticated = True
                 self.hb_tsmp = time()
             else:
-                TcpHandler._warnning("Not authenticated: " + str(d))
+                TcpHandler.warn("Not authenticated: " + str(d))
 
     def _send_hbframe(self):
         if self.authenticated:
@@ -123,7 +123,7 @@ class TcpHandler(dispatcher):
 
     def _deal_wxframe(self, data):
         frame = WxFrame(pkt=data)
-        TcpHandler._info(str(frame))
+        TcpHandler.info(str(frame))
         ack = dict2json(json_tpl["ACK"]).encode(encoding='utf-8')
         afrm = WxFrame(255, frame.sequence, ack)
         frm_buf.append((local_ip, 0, afrm))
@@ -140,7 +140,7 @@ class UdpHandler(dispatcher):
 
     def handle_read(self):
         data, addr = self.socket.recvfrom(1024)
-        UdpHandler._info("Received from %s: %s" % (addr, data.hex()))
+        UdpHandler.info("Received from %s: %s" % (addr, data.hex()))
         if data[0] == 0x81:
             frame = BacFrame(data)
             frm_buf.append((*addr, frame))
@@ -154,7 +154,7 @@ class UdpHandler(dispatcher):
 
         if len(self.smsg) is not 0:
             if len(self.smsg[0][0]) is not 0:
-                UdpHandler._info("Send to %s: %s" %
+                UdpHandler.info("Send to %s: %s" %
                                  (self.smsg[0][1], self.smsg[0][0].hex()))
                 ret = self.socket.sendto(*self.smsg[0])
                 del self.smsg[0][0][:ret]
@@ -165,14 +165,14 @@ class UdpHandler(dispatcher):
 @addlog
 class FakeG(Thread):
     def __init__(self, id, ip, port):
-        FakeG._info("Start fakeg....")
+        FakeG.info("Start fakeg....")
         super().__init__(name="FakeG", daemon=True, target=asyncore_loop)
         self.tcp_handler = TcpHandler(id, ip, port)
         self.udp_handler = UdpHandler(udp_port)
 
 
 if __name__ == '__main__':
-    init_log('/tmp/fakeg.log')
+    init_log('/tmp/fakeg.log', "INFO")
     try:
         FakeG(1231, "10.98.1.178", 46060).start()
         while running:

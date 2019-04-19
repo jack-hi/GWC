@@ -1,21 +1,23 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-from logging import basicConfig, getLogger, root, FileHandler, Formatter
+from logging import getLogger, root, StreamHandler,FileHandler, Formatter
 
 
-def init_log(logfile="log.log"):
+def init_log(logfile="log.log", level="INFO"):
     if len(root.handlers) is 0:
-        basicConfig(level="DEBUG",
-                    format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s")
-                    # format="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
-                    # datefmt="%Y-%m-%d %H:%M:%S")
-
+        # root record all
+        root.setLevel(0)
+        fmt = "%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s"
+        # display on screen
+        s_handler = StreamHandler()
+        s_handler.setLevel(level)
+        s_handler.setFormatter(Formatter(fmt=fmt))
+        root.addHandler(s_handler)
+        # write all levels to logfile
         f_handler = FileHandler(logfile)
-        f_handler.setFormatter(
-            Formatter(fmt="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s"))
-            # Formatter(fmt="%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s",
-            #           datefmt="%Y-%m-%d %H:%M:%S"))
+        # f_handler.setLevel(0)
+        f_handler.setFormatter(Formatter(fmt=fmt))
         root.addHandler(f_handler)
     else:
         raise RuntimeError("init_debug() can only call once.")
@@ -27,13 +29,13 @@ def addlog(obj):
     logger = getLogger(obj.__module__ + '.' + obj.__name__)
 
     # make it available to instances
-    obj._logger = logger
-    obj._debug = logger.debug
-    obj._info = logger.info
-    obj._warning = logger.warning
-    obj._error = logger.error
-    # obj._exception = logger.exception
-    # obj._fatal = logger.fatal
+    obj.logger = logger
+    obj.debug = logger.debug
+    obj.info = logger.info
+    obj.warn = logger.warning
+    obj.error = logger.error
+    obj.exception = logger.exception
+    obj.fatal = logger.fatal
 
     return obj
 
@@ -41,15 +43,15 @@ def addlog(obj):
 @addlog
 class test():
     def __init__(self):
-        #test._fatal("fatal")
-        #test._exception("exception")
-        test._error("error")
-        test._warning("warning")
-        test._info("test")
-        test._debug("debug")
+        test.fatal("fatal")
+        test.exception("exception")
+        test.error("error")
+        test.warn("warning")
+        test.info("test")
+        test.debug("debug")
 
 
 if __name__ == "__main__":
-    init_log()
-    init_log()
+    init_log(level='INFO')
+    # init_log()
     test()

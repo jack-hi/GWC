@@ -8,7 +8,6 @@ from socket import inet_aton, inet_ntoa
 from time import localtime, strftime, time
 from mcrptos import AES128, MD5, Icrc16
 from json import loads, dumps
-from commons import addlog
 
 
 class Packet(object):
@@ -395,7 +394,7 @@ class WxFrame(Packet):
         return "WxFrame {number=%d, sequence=%d, length=%d, json=%s, xor=%d}" \
                % (self.number, self.sequence, self.length, self.json.decode(), self.xor)
 
-@addlog
+
 class Dwrap(Packet):
     """
     " simple wrap

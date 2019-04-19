@@ -17,10 +17,10 @@ class WxServer(dispatcher):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.bind((ip, port))
         self.listen(5)
-        WxServer._info("Start WxServer ...")
+        WxServer.info("Start WxServer ...")
 
     def handle_accepted(self, sock, addr):
-        WxServer._info("Accept client: " + str(addr))
+        WxServer.info("Accept client: " + str(addr))
         Wservice(sock)
 
 
@@ -53,12 +53,12 @@ class Wservice(dispatcher):
     def handle_read(self):
         buf = self.recv(1024)
         if len(buf) is 0: return
-        Wservice._info("Received: %s" % str(buf.hex()))
+        Wservice.debug("Received: %s" % str(buf.hex()))
         self.rbuf += buf
         self._service(self._decode())
 
     def handle_close(self):
-        Wservice._warning("Client connection closed.")
+        Wservice.warn("Client connection closed.")
         global mock_thread_running, mock_thread
         mock_thread_running = False
         mock_thread = None
@@ -90,7 +90,7 @@ class Wservice(dispatcher):
         rjs = frame.json.decode(encoding="utf-8")
         rj = json2dict(rjs)
         if frame.number is 0x01:  # hs
-            Wservice._info("Received HS: " + rjs)
+            Wservice.info("Received HS: " + rjs)
             self._generate_ack(frame, rj)
             # start sending mock insts.
             global mock_thread, mock_thread_running
@@ -99,12 +99,12 @@ class Wservice(dispatcher):
                 mock_thread_running = True
                 mock_thread.start()
         elif frame.number is 0x02:  # hb
-            Wservice._info("Received HB: " + rjs)
+            Wservice.info("Received HB: " + rjs)
             self._generate_ack(frame, rj)
         elif frame.number is 0xff:  # ack
-            Wservice._info("Received ACK: " + rjs)
+            Wservice.info("Received ACK: " + rjs)
         else:
-            Wservice._info("Unknow inst: " + rjs)
+            Wservice.info("Unknow inst: " + rjs)
 
     def _generate_ack(self, frame, rj, is_success=True, err_msg=""):
         ack = json_tpl['ACK']
@@ -115,7 +115,7 @@ class Wservice(dispatcher):
         ack["IsSuccess"] = is_success
         ack["ErrMsg"] = err_msg
 
-        Wservice._info("Reply ACK: " + dict2json(ack))
+        Wservice.info("Send ACK: " + dict2json(ack))
         self.send_frame(WxFrame(0xff, frame.sequence, dict2json(ack).encode()))
 
 
@@ -135,14 +135,14 @@ def mock_inst(*args, **kwargs):
             sj["Wx_FlcNum"] = 101
             frame = WxFrame(json_idx[key], seq, dict2json(sj).encode())
             ws.send_frame(frame)
-            mock_inst._info("Send inst: " + str(frame) +
+            mock_inst.info("Send inst: " + str(frame) +
                             ", json: " + dict2json(sj))
             seq = 0 if seq ^ 0xFFFF is 0 else seq + 1
             sleep(30)
 
 
 if __name__ == "__main__":
-    init_log('/tmp/wx.log')
+    init_log('/tmp/wx.log', "INFO")
     WxServer("", 12345)
     try:
         asyncore_loop()
