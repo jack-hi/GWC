@@ -72,6 +72,12 @@ class Packet(object):
     def put_long(self, l):
         self.pdata += pack('>L', l & 0xFFFFFFFF)
 
+    def _encode(self):
+        raise NotImplementedError("Need to override.")
+
+    def _decode(self):
+        raise NotImplementedError("Need to override.")
+
     def __str__(self):
         hexstr = str(hexlify(self.pdata), 'ascii').upper()
         return ' '.join(hexstr[i:i+2] for i in range(0, len(hexstr), 2))
@@ -116,7 +122,6 @@ class HbFrame(Packet):
         if HbFrame.seq > 0xFFFF:
             HbFrame.seq = 0
         return HbFrame.seq
-
 
 
 class LgiFrame(Packet):
@@ -183,104 +188,53 @@ class BacFrame(Packet):
 
 class FcFrame(Packet):
     """
-     **
-     * PacketSegment Structure: (big-endian)
-     *	0       8       16      24     31
-     *	+-------+-------+---------------+
-     *	| 0x88  | flags |     length    |
-     *	+-------+-------+-------+-------+
-     *	|    packetID   |   segmentNum  |
-     *	+---------------+---------------+
-     *	|             DATA              |
-     *	+-------------------------------+
-     *
-     *	flags:
-     *	 7 6 5 4 3 2 1 0
-     *	+-+-+-+-+-+-+-+-+
-     *	| | | | | | |f|a|
-     *	|0|0|0|0|0|0|l|c|
-     *	| | | | | | |w|k|
-     *	+-+-+-+-+-+-+-+-+
-     *	flw: more follow flags
-     *	ack: ACK flags
-     *
+    +--------+--------+--------+-------+
+    |         pakcet length            |
+    +--------+--------+--------+-------+
+    |  flag  | pktid  |   segmentnum   |
+    +--------+--------+--------+-------+
+    |               DATA               |
+    +--------+--------+--------+-------+
+
 
     """
     TYPE = 6
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.identity = Segment.INDENTITY
-        self.flags = 0
-        self.packet_id = 0
-        self.length = 0
-        self.seq = 0
-        self.data = None
-
-    def update(self, flags, id, seq, data):
-        self.flags = flags
-        self.packet_id = id
-        self.seq = seq
-        if data is None:
-            self.length = 8
-            return
+    def __init__(self, pkt_len=0, flag=0, pkt_id=0, segment_num=0, data=b'', pkt=None):
+        super().__init__(data=pkt)
+        if pkt is not None:
+            self._decode()
         else:
-            if not isinstance(data, (list, bytes, bytearray)):
-                raise ValueError(" value type error ")
+            self.pkt_len = pkt_len
+            self.flag = flag
+            self.pkt_id = pkt_id
+            self.segment_num = segment_num
             self.data = data
-            self.length = 8 if data == None else 8 + len(data)
-        return self
+            self._encode()
 
-    def encode(self):
-        self.put(self.identity)
-        self.put(self.flags)
-        self.put_short(self.length)
-        self.put_short(self.packet_id)
-        self.put_short(self.seq)
-        if self.data is not None:
-            self.put_data(self.data)
+    def _encode(self):
+        self.put_long(self.pkt_len)
+        self.put(self.flag)
+        self.put(self.pkt_id)
+        self.put_short(self.segment_num)
+        self.put_data(self.data)
 
-        return self
-
-    def decode(self):
-        self.get()  # identity: 0x88
-        self.flags = self.get()
-        self.length = self.get_short()
-        self.packet_id = self.get_short()
-        self.seq = self.get_short()
-        self.data = self.get_all()
-
-        return self
-
-    def get_flags(self):
-        return self.flags
-
-    def get_packet_id(self):
-        return self.packet_id
-
-    def get_length(self):
-        return self.length
-
-    def get_seq(self):
-        return self.seq
-
-    def get_segment_data(self):
-        return self.data
+    def _decode(self):
+        p = Packet(self)
+        self.pkt_len = p.get_long()  # 4
+        self.flag = p.get()  # 1
+        self.pkt_id = p.get()  # 1
+        self.segment_num = p.get_short()  # 2
+        self.data = p.get_all()
 
     def __str__(self):
-        tmp = Packet.__str__(self)
-        tmp += \
-            f"\nidentity: 0x{self.identity:x}, " \
-            f"flags: {self.flags}, " \
-            f"length: {self.length}, " \
-            f"packet_id: {self.packet_id}, " \
-            f"segment_num: {self.seq}\n"
-        return tmp
+        return "FcFrame {pkt_len: %d, flag: %d, pkt_id: %d: segment_num: %d}" \
+               % (self.pkt_len, self.flag, self.pkt_id, self.segment_num)
 
 
 dict2json = lambda x: dumps(x)
 json2dict = lambda x: loads(x)
-
+cts = lambda t: strftime("%Y-%m-%d %H:%M:%S.", localtime(t)) + "%03d" % ((t-int(t))*1000)
 json_idx = {
     "ACK": 0xff,
     "ODR": 0x04,
@@ -288,8 +242,6 @@ json_idx = {
     "CVC": 0x08,
     "ESR": 0x09,
 }
-
-cts = lambda t: strftime("%Y-%m-%d %H:%M:%S.", localtime(t)) + "%03d" % ((t-int(t))*1000)
 json_tpl = {
     # "handshake": {"key": "0123456789012345"}
     # "heartbeat": {"ConnectTime": strftime("%Y-%m-%d %H:%M:%S")}
