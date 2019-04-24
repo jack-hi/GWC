@@ -35,21 +35,22 @@ class LogService(dispatcher):
         self._service(self._decode())
 
     def handle_close(self):
+        print("Client closed...")
         self.close()
 
     def _decode(self):
-        if len(self.rbuf) < 4:
-            return b''
+        if len(self.rbuf) < 4: return b''
+
         length = unpack('>L', self.rbuf[:4])[0]
-        if len(self.rbuf) < 4+length:
-            return b''
+        if len(self.rbuf) < 4+length: return b''
+
         ret = self.rbuf[4: 4+length]
         del self.rbuf[:4+length]
         return ret
 
     def _service(self, data):
-        if len(data) is 0:
-            return
+        if len(data) is 0: return
+
         record = loads(data)
         # root.handle(makeLogRecord(record))
         print(record)

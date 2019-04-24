@@ -10,22 +10,23 @@ def init_log(logfile="log.log", level="INFO", server_addr=None):
         # root record all
         root.setLevel(0)
         fmt = "%(asctime)s %(name)s,line:%(lineno)d [%(levelname)s] %(message)s"
+        fmter = Formatter(fmt=fmt)
         # display on screen
         s_handler = StreamHandler()
         s_handler.setLevel(level)
-        s_handler.setFormatter(Formatter(fmt=fmt))
+        s_handler.setFormatter(fmter)
         root.addHandler(s_handler)
         # write all levels to logfile
         f_handler = FileHandler(logfile)
         # f_handler.setLevel(0)
-        f_handler.setFormatter(Formatter(fmt=fmt))
+        f_handler.setFormatter(fmter)
         root.addHandler(f_handler)
 
         # TCP handler
         if server_addr is not None:
             t_handler = SocketHandler(*server_addr)
             # t_handler.setLevel(0)
-            t_handler.setFormatter(Formatter(fmt=fmt))
+            t_handler.setFormatter(fmter)
             root.addHandler(t_handler)
     else:
         raise RuntimeError("init_debug() can only call once.")
