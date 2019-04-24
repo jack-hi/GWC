@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 from logging import getLogger, root, StreamHandler,FileHandler, Formatter
+from logging.handlers import DatagramHandler, SocketHandler
 
 
-def init_log(logfile="log.log", level="INFO"):
+def init_log(logfile="log.log", level="INFO", server_addr=None):
     if len(root.handlers) is 0:
         # root record all
         root.setLevel(0)
@@ -19,6 +20,13 @@ def init_log(logfile="log.log", level="INFO"):
         # f_handler.setLevel(0)
         f_handler.setFormatter(Formatter(fmt=fmt))
         root.addHandler(f_handler)
+
+        # TCP handler
+        if server_addr is not None:
+            t_handler = SocketHandler(*server_addr)
+            # t_handler.setLevel(0)
+            t_handler.setFormatter(Formatter(fmt=fmt))
+            root.addHandler(t_handler)
     else:
         raise RuntimeError("init_debug() can only call once.")
 
@@ -56,7 +64,7 @@ def func():
 
 
 if __name__ == "__main__":
-    init_log(level='INFO')
+    init_log(level='INFO', server_addr=('127.0.0.1', 41400))  # tcp client must indicate server IP
     # init_log()
     test()
 
