@@ -236,28 +236,36 @@ dict2json = lambda x: dumps(x)
 json2dict = lambda x: loads(x)
 cts = lambda t: strftime("%Y-%m-%d %H:%M:%S.", localtime(t)) + "%03d" % ((t-int(t))*1000)
 json_idx = {
-    "ACK": 0xff,
-    "ODR": 0x04,
-    "OER": 0x05,
-    "CVC": 0x08,
-    "ESR": 0x09,
+    "HDK": 21,
+    "HBT": 22,
+    "BNS": 23,
+    "ODR": 24,
+    "OER": 25,
+    "CRD": 26,
+    "QRD": 27,
+    "CVC": 28,
+    "ESR": 29,
+    "ACK": 32,
 }
 json_tpl = {
     # "handshake": {"key": "0123456789012345"}
     # "heartbeat": {"ConnectTime": strftime("%Y-%m-%d %H:%M:%S")}
     "ACK": {"ErrMsg": "",
-            "IsSuccess":True,
+            "OperResult":1,
             "OperationTime": cts(time()),
             "Remark":"",
             "ReplyCommand":1,
             "Wx_FlcNum":120,
-            "Wx_buildNum":"F1021"},
+            "Wx_buildNum":"F1021",
+            "LogId": 10000},
 
     "ODR": {"Wx_DoorName":"2",
             "Wx_DrNumInFlc":12,
             "Wx_DrShowFlr":"11F",
-            "Wx_buildNum":"F0000000 ",
-            "Wx_FlcNum":111},
+            "Wx_buildNum":"F0000128",
+            "Wx_FlcNum":106,
+            "ICCard": "541974",
+            "LogId": 236160},
 
     "OER": {"Wx_EleNum":2,
             "WX_Ele_PhysicFlr":12,

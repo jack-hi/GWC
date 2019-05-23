@@ -4,14 +4,14 @@
 import socket
 from time import sleep, time
 from segment import Dwrap, HbFrame, LgiFrame, BacFrame, WxFrame
-from segment import json_tpl, dict2json
+from segment import json_tpl, dict2json, json2dict
 from threading import Thread
 from asyncore import dispatcher, loop as asyncore_loop
 from commons import init_log, addlog
 
 local_ip = '10.98.1.218'
 udp_port = 0xBAC1
-udp_ifc = ("", 0xBAC0)
+udp_ifc = ("", 0xBAC2)
 udp_msg = list()  # item: (bytes,('xx.xx.xx.xx', port))
 frm_buf = list()  # item: ('xx.xx.xx.xx', port, Frame)
 running = True
@@ -124,10 +124,16 @@ class TcpHandler(dispatcher):
     def _deal_wxframe(self, data):
         frame = WxFrame(pkt=data)
         self.info("Deal WxFrame: " + str(frame))
-        ack = dict2json(json_tpl["ACK"]).encode(encoding='utf-8')
-        afrm = WxFrame(255, frame.sequence, ack)
+        ins = json2dict(frame.json.decode())
+        ack = json_tpl["ACK"]
+        ack["Wx_FlcNum"] = ins["Wx_FlcNum"]
+        ack["Wx_buildNum"] = ins["Wx_buildNum"]
+        ack["LogId"] = ins["LogId"]
+        ack["ReplyCommand"] = frame.number
+        ack["OperResult"] = 1
+        self.info("    -- wxACK: " + dict2json(ack))
+        afrm = WxFrame(32, frame.sequence, dict2json(ack).encode(encoding="UTF-8"))
         frm_buf.append((local_ip, 0, afrm))
-
 
 @addlog
 class UdpHandler(dispatcher):
@@ -174,7 +180,7 @@ class FakeG(Thread):
 if __name__ == '__main__':
     init_log('/tmp/fakeg.log', "INFO")
     try:
-        FakeG(1231, "10.98.1.178", 46060).start()
+        FakeG(132, "10.98.1.178", 46060).start()
         while running:
             sleep(1)
     except KeyboardInterrupt:
